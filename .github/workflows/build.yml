@@ -27,6 +27,12 @@ jobs:
     - name: Get VST2 SDK
       run: git clone https://github.com/R-Tur/VST_SDK_2.4.git
 
+    - name: Cache juceaide
+      uses: actions/cache@v3
+      with:
+        path: build/modules/JUCE/extras/Build/juceaide
+        key: juceaide-linux-${{ hashFiles('juce/CMakeLists.txt') }}
+
     - name: Build
       run: |
         cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
@@ -55,6 +61,12 @@ jobs:
 
     - name: Get VST2 SDK
       run: git clone https://github.com/R-Tur/VST_SDK_2.4.git
+
+    - name: Cache juceaide
+      uses: actions/cache@v3
+      with:
+        path: build/modules/JUCE/extras/Build/juceaide
+        key: juceaide-linux-${{ hashFiles('juce/CMakeLists.txt') }}
 
     - name: Build
       run: |
