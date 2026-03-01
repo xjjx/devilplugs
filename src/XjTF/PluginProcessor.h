@@ -7,17 +7,15 @@
 #include <chowdsp_wdf/chowdsp_wdf.h>
 
 // Transformer WDF circuit per channel:
+namespace wdft = chowdsp::wdft;
 struct TransformerWDF
 {
-    chowdsp::wdf::ResistiveVoltageSource<float> Vs { 600.0f };  // source with Rs built in
-    chowdsp::wdf::Inductor<float> Lp { 0.02f };
-    chowdsp::wdf::Resistor<float> Rload { 47000.0f };
+    wdft::ResistiveVoltageSourceT<float> Vs { 600.0f };
+    wdft::InductorT<float> Lp { 0.02f };
+    wdft::ResistorT<float> Rload { 47000.0f };
 
-    // Series: Vs + Lp
-    chowdsp::wdf::WDFSeries<float> S1 { &Vs, &Lp };
-
-    // Root: parallel with load — this is the termination
-    chowdsp::wdf::WDFParallel<float> root { &S1, &Rload };
+    wdft::WDFSeriesT<float, decltype(Vs), decltype(Lp)> S1 { Vs, Lp };
+    wdft::WDFParallelT<float, decltype(S1), decltype(Rload)> root { S1, Rload };
 
     void prepare (double sampleRate)
     {
@@ -27,12 +25,9 @@ struct TransformerWDF
     float process (float input)
     {
         Vs.setVoltage (input);
-
-        // Propagate waves — root has no parent so just call reflected
+        root.incident (0.0f);
         root.reflected();
-        root.incident (0.0f);  // terminated with open circuit at root
-
-        return chowdsp::wdft::voltage<float> (Rload);
+        return wdft::voltage<float> (Rload);
     }
 };
 std::array<TransformerWDF, 2> transformerWDF;
