@@ -8,6 +8,7 @@ static const juce::String TONE_ID      = "tone";
 static const juce::String OUTPUT_ID    = "output";
 static const juce::String SATURATION_ID = "saturation";
 static const juce::String OVERSAMPLING_ID = "oversampling";
+static const juce::String INSTABILITY_ID = "instability";
 
 //==============================================================================
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -30,7 +31,7 @@ XjTFProcessor::createParameterLayout()
     // Character: 0 = Vintage (even harmonics), 1 = Modern (more odd)
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
         CHARACTER_ID, "Character",
-        juce::NormalisableRange<float> (0.f, 1.f, 0.01f), 0.f,
+        juce::NormalisableRange<float> (0.f, 1.f, 0.01f), 0.4f,
         juce::AudioParameterFloatAttributes().withLabel ("")));
 
     // Tone: bass bloom / high trim, -6..+6 dB
@@ -44,6 +45,12 @@ XjTFProcessor::createParameterLayout()
         OUTPUT_ID, "Output",
         juce::NormalisableRange<float> (-12.f, 12.f, 0.1f), 0.f,
         juce::AudioParameterFloatAttributes().withLabel ("dB")));
+
+    // Instability
+    params.push_back (std::make_unique<juce::AudioParameterFloat> (
+        "instability", "Instability",
+        juce::NormalisableRange<float> (0.f, 1.f, 0.01f), 0.f,
+        juce::AudioParameterFloatAttributes().withLabel ("%")));
 
     // Oversampling
     params.push_back (std::make_unique<juce::AudioParameterBool> (
@@ -63,6 +70,8 @@ XjTFProcessor::XjTFProcessor()
 {
     transformerWDF[0] = std::make_unique<TransformerWDF>();
     transformerWDF[1] = std::make_unique<TransformerWDF>();
+    noiseGen[0] = std::make_unique<NoiseGen>();
+    noiseGen[1] = std::make_unique<NoiseGen>();
 
     apvts.addParameterListener (TONE_ID, this);
     saturationParam = apvts.getRawParameterValue (SATURATION_ID);
@@ -88,6 +97,7 @@ void XjTFProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     characterParam = apvts.getRawParameterValue (CHARACTER_ID);
     toneParam      = apvts.getRawParameterValue (TONE_ID);
     outputParam    = apvts.getRawParameterValue (OUTPUT_ID);
+    instabilityParam = apvts.getRawParameterValue (INSTABILITY_ID);
 
     // Prepare oversampling
     oversamplingParam = apvts.getRawParameterValue (OVERSAMPLING_ID);
@@ -140,6 +150,7 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     const float character = characterParam->load();
     const float toneDb    = toneParam->load();
     const float outputDb  = outputParam->load();
+    const float instability = instabilityParam->load();
 
     // Map drive 0..100 -> saturation parameters
     // Low drive = subtle even-harmonic color, high drive = heavier saturation
@@ -191,7 +202,21 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
             s = transformerWDF[static_cast<size_t>(ch)]->process (s);
 
             // Soft clip for extreme drive levels
-            s = saturate (s, satAmount, static_cast<int> (saturationParam->load()));
+            if (instability > 0.0)
+            {
+                // stochastic resonance: noise before saturator
+                double noise = noiseGen[static_cast<size_t> (ch)]->next();
+                s += noise * instability * 0.002;  // very subtle noise floor
+
+                // saturation jitter: random variation of knee per sample
+                double jitter = 1.0 + noiseGen[static_cast<size_t> (ch)]->next()
+                            * instability * 0.05;
+                s = saturate (s, satAmount * jitter, static_cast<int> (saturationParam->load()));
+            }
+            else
+            {
+                s = saturate (s, satAmount, static_cast<int> (saturationParam->load()));
+            }
 
             data[i] = s;
         }

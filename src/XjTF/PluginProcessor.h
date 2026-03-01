@@ -31,6 +31,19 @@ struct TransformerWDF
     }
 };
 
+// fast xorshift random, one per channel
+struct NoiseGen
+{
+    uint32_t state = 12345;
+    double next() noexcept
+    {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        return (double) state / (double) 0xFFFFFFFF - 0.5;
+    }
+};
+
 //==============================================================================
 class XjTFProcessor : public juce::AudioProcessor,
                       public juce::AudioProcessorValueTreeState::Listener
@@ -91,6 +104,7 @@ private:
     juce::dsp::Oversampling<double> oversampling;
 
     std::unique_ptr<TransformerWDF> transformerWDF[2];
+    std::unique_ptr<NoiseGen> noiseGen[2];
 
     // DC blocker per channel
     struct DCBlocker
@@ -117,6 +131,7 @@ private:
     std::atomic<float>* outputParam  = nullptr;
     std::atomic<float>* saturationParam = nullptr;
     std::atomic<float>* oversamplingParam = nullptr;
+    std::atomic<float>* instabilityParam = nullptr;
     std::atomic<bool> toneChanged { true };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (XjTFProcessor)
