@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # JUCE
 add_subdirectory(juce)
+add_subdirectory(chowdsp_wdf)
 
 # VST3 SDK - tell JUCE where to find it
 set(JUCE_VST3_SDK_PATH "${CMAKE_CURRENT_SOURCE_DIR}/vst3sdk")
@@ -29,6 +30,10 @@ juce_add_plugin(XjTF
     LV2URI "urn:xjdevilplugs:xjtf"
 )
 
+target_include_directories(XjTF SYSTEM PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/chowdsp_wdf/include
+)
+
 target_sources(XjTF
     PRIVATE
         src/XjTF/PluginProcessor.cpp
@@ -45,6 +50,7 @@ target_link_libraries(XjTF
     PRIVATE
         juce::juce_audio_utils
         juce::juce_dsp
+        chowdsp_wdf
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags

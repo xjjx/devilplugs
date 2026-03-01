@@ -4,3 +4,6 @@
 [submodule "vst3sdk"]
 	path = vst3sdk
 	url = https://github.com/steinbergmedia/vst3sdk.git
+[submodule "chowdsp_wdf"]
+	path = chowdsp_wdf
+	url = https://github.com/Chowdhury-DSP/chowdsp_wdf.git

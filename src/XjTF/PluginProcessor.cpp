@@ -63,15 +63,17 @@ void XjTFProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     outputParam    = apvts.getRawParameterValue (OUTPUT_ID);
 
     // Prepare oversampling
-    oversampling.initProcessing (static_cast<size_t> (samplesPerBlock));
     oversampling.reset();
+    oversampling.initProcessing (static_cast<size_t> (samplesPerBlock));
+
+    double osRate = sampleRate * oversampling.getOversamplingFactor();
+    for (auto& t : transformerWDF)
+       t.prepare (osRate);
 
     // Reset hysteresis & DC blocker state
-    hystState.fill ({});
     dcBlocker.fill ({});
 
     // Prepare filters at oversampled rate
-    double osRate = sampleRate * oversampling.getOversamplingFactor();
     juce::dsp::ProcessSpec spec { osRate,
                                   static_cast<uint32_t> (static_cast<size_t> (samplesPerBlock) * oversampling.getOversamplingFactor()),
                                   2 };
@@ -88,29 +90,6 @@ void XjTFProcessor::releaseResources()
 }
 
 //==============================================================================
-float XjTFProcessor::processSampleHysteresis (float input,
-                                               HysteresisState& state,
-                                               float drive,
-                                               float saturation)
-{
-    // Blend between dry input and driven input based on drive amount
-    float driven = input * drive;
-
-    // Soft saturation with state memory for subtle hysteresis character
-    float output = std::tanh (driven * saturation) / saturation;
-
-    // Small amount of state feedback for the "memory" characteristic
-    // of magnetic hysteresis — without differentiating the signal
-    output += 0.05f * state.prevOutput;
-    output /= 1.05f; // normalize to prevent gain creep
-
-    state.prevOutput = output;
-    state.prevInput  = input;
-
-    return output;
-}
-
-//==============================================================================
 void XjTFProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                              juce::MidiBuffer& /*midiMessages*/)
 {
@@ -124,8 +103,8 @@ void XjTFProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // Map drive 0..100 -> saturation parameters
     // Low drive = subtle even-harmonic color, high drive = heavier saturation
     const float driveNorm = drive / 100.f;                    // 0..1
-    const float satAmount = 1.f + driveNorm * 4.f;            // 1..5 — controls knee tightness
-    const float driveGain = 1.f + driveNorm * (0.5f + character * 1.5f); // more odd harmonics with character
+    const float satAmount = 1.f + (driveNorm * driveNorm) * 2.f;        // 1..3, gentler knee
+    const float driveGain = 1.f + (driveNorm * driveNorm) * (0.3f + character * 0.8f); // much gentler
 
     // Update tone filters (low shelf boost / high shelf trim tied to Tone knob)
     // Tone > 0: bass bloom up + highs slightly down. Tone < 0: reverse.
@@ -149,7 +128,6 @@ void XjTFProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* data = osBlock.getChannelPointer (static_cast<size_t> (ch));
-        auto&  hs   = hystState[static_cast<size_t> (ch)];
         auto&  dc   = dcBlocker[static_cast<size_t> (ch)];
 
         for (int i = 0; i < numSamples; ++i)
@@ -157,8 +135,14 @@ void XjTFProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             // 1. DC block (transformers are AC-coupled)
             float s = dc.process (data[i]);
 
-            // 2. Hysteresis / saturation
-            s = processSampleHysteresis (s, hs, driveGain, satAmount);
+            // Drive into transformer
+            s *= driveGain;
+
+            // WDF transformer model
+            s = transformerWDF[static_cast<size_t>(ch)].process (s);
+
+            // Soft clip for extreme drive levels
+            s = std::tanh (s * satAmount) / satAmount;
 
             data[i] = s;
         }

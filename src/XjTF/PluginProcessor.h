@@ -2,6 +2,40 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
+#include <chowdsp_wdf/chowdsp_wdf.h>
+
+#include <chowdsp_wdf/chowdsp_wdf.h>
+
+// Transformer WDF circuit per channel:
+struct TransformerWDF
+{
+    chowdsp::wdf::ResistiveVoltageSource<float> Vs { 600.0f };  // source with Rs built in
+    chowdsp::wdf::Inductor<float> Lp { 0.02f };
+    chowdsp::wdf::Resistor<float> Rload { 47000.0f };
+
+    // Series: Vs + Lp
+    chowdsp::wdf::WDFSeries<float> S1 { &Vs, &Lp };
+
+    // Root: parallel with load — this is the termination
+    chowdsp::wdf::WDFParallel<float> root { &S1, &Rload };
+
+    void prepare (double sampleRate)
+    {
+        Lp.prepare (sampleRate);
+    }
+
+    float process (float input)
+    {
+        Vs.setVoltage (input);
+
+        // Propagate waves — root has no parent so just call reflected
+        root.reflected();
+        root.incident (0.0f);  // terminated with open circuit at root
+
+        return chowdsp::wdft::voltage<float> (Rload);
+    }
+};
+std::array<TransformerWDF, 2> transformerWDF;
 
 //==============================================================================
 class XjTFProcessor : public juce::AudioProcessor
@@ -47,14 +81,6 @@ private:
     // DSP
     juce::dsp::Oversampling<float> oversampling;
 
-    // Per-channel hysteresis state
-    struct HysteresisState
-    {
-        float prevInput  = 0.f;
-        float prevOutput = 0.f;
-    };
-    std::array<HysteresisState, 2> hystState;
-
     // DC blocker per channel
     struct DCBlocker
     {
@@ -78,8 +104,6 @@ private:
     std::atomic<float>* characterParam = nullptr;
     std::atomic<float>* toneParam    = nullptr;
     std::atomic<float>* outputParam  = nullptr;
-
-    float processSampleHysteresis (float input, HysteresisState& state, float drive, float saturation);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (XjTFProcessor)
 };
