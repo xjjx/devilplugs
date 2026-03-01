@@ -49,9 +49,20 @@ XjTFProcessor::XjTFProcessor()
       oversampling (2, 2, juce::dsp::Oversampling<double>::filterHalfBandPolyphaseIIR, true)
       // 2 channels, factor 2^2 = 4x oversampling
 {
+    apvts.addParameterListener (TONE_ID, this);
 }
 
-XjTFProcessor::~XjTFProcessor() {}
+XjTFProcessor::~XjTFProcessor()
+{
+    apvts.removeParameterListener (TONE_ID, this);
+}
+
+//==============================================================================
+void XjTFProcessor::parameterChanged (const juce::String& paramID, float)
+{
+    if (paramID == TONE_ID)
+        toneChanged = true;
+}
 
 //==============================================================================
 void XjTFProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -78,8 +89,8 @@ void XjTFProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
                                   static_cast<uint32_t> (static_cast<size_t> (samplesPerBlock) * oversampling.getOversamplingFactor()),
                                   2 };
 
-    *lowShelf.state  = *juce::dsp::IIR::Coefficients<double>::makeLowShelf  (osRate, 120.0,  0.7f, 1.f);
-    *highShelf.state = *juce::dsp::IIR::Coefficients<double>::makeHighShelf (osRate, 8000.0, 0.7f, 1.f);
+    *lowShelf.state  = *juce::dsp::IIR::Coefficients<double>::makeLowShelf  (osRate, 120.0,  0.7, 1.0);
+    *highShelf.state = *juce::dsp::IIR::Coefficients<double>::makeHighShelf (osRate, 8000.0, 0.7, 1.0);
     lowShelf.prepare  (spec);
     highShelf.prepare (spec);
 }
@@ -102,20 +113,21 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
 
     // Map drive 0..100 -> saturation parameters
     // Low drive = subtle even-harmonic color, high drive = heavier saturation
-    const double driveNorm = drive / 100.f;                    // 0..1
-    const double satAmount = 1.f + (driveNorm * driveNorm) * 2.f;        // 1..3, gentler knee
-    const double driveGain = 1.f + (driveNorm * driveNorm) * (0.3f + character * 0.8f); // much gentler
+    const double driveNorm = drive / 100.0;                    // 0..1
+    const double satAmount = 1.0 + (driveNorm * driveNorm) * 2.0;        // 1..3, gentler knee
+    const double driveGain = 1.0 + (driveNorm * driveNorm) * (0.3 + character * 0.8); // much gentler
 
     // Update tone filters (low shelf boost / high shelf trim tied to Tone knob)
     // Tone > 0: bass bloom up + highs slightly down. Tone < 0: reverse.
+    if (toneChanged.exchange (false))
     {
-        double osRate = getSampleRate() * oversampling.getOversamplingFactor();
-        double lowGain  = juce::Decibels::decibelsToGain ( toneDb * 0.8f);  // ±4.8 dB bass
-        double highGain = juce::Decibels::decibelsToGain (-toneDb * 0.4f);  // ±2.4 dB highs (opposite)
-        *lowShelf.state  = *juce::dsp::IIR::Coefficients<double>::makeLowShelf  (osRate, 120.0,  0.7f, lowGain);
-        *highShelf.state = *juce::dsp::IIR::Coefficients<double>::makeHighShelf (osRate, 8000.0, 0.7f, highGain);
+        lastToneDb = toneDb;
+        double osRate   = getSampleRate() * oversampling.getOversamplingFactor();
+        double lowGain  = juce::Decibels::decibelsToGain ((double) toneDb *  0.8);
+        double highGain = juce::Decibels::decibelsToGain ((double) toneDb * -0.4);
+        *lowShelf.state  = *juce::dsp::IIR::Coefficients<double>::makeLowShelf  (osRate, 120.0, 0.7, lowGain);
+        *highShelf.state = *juce::dsp::IIR::Coefficients<double>::makeHighShelf (osRate, 8000.0, 0.7, highGain);
     }
-
     const double outputGain = juce::Decibels::decibelsToGain (outputDb);
 
     // --- Upsample ---

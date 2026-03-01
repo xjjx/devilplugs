@@ -33,7 +33,8 @@ struct TransformerWDF
 std::array<TransformerWDF, 2> transformerWDF;
 
 //==============================================================================
-class XjTFProcessor : public juce::AudioProcessor
+class XjTFProcessor : public juce::AudioProcessor,
+                      public juce::AudioProcessorValueTreeState::Listener
 {
 public:
     XjTFProcessor();
@@ -63,6 +64,7 @@ public:
     void setCurrentProgram (int) override {}
     const juce::String getProgramName (int) override { return {}; }
     void changeProgramName (int, const juce::String&) override {}
+    void parameterChanged (const juce::String& paramID, float newValue) override;
 
     //==============================================================================
     void getStateInformation (juce::MemoryBlock& destData) override;
@@ -83,6 +85,8 @@ private:
 
     template <typename Sample>
     void processImpl (juce::AudioBuffer<Sample>& buffer);
+
+    float lastToneDb = -999.f;
 
     // DSP
     juce::dsp::Oversampling<double> oversampling;
@@ -110,6 +114,7 @@ private:
     std::atomic<float>* characterParam = nullptr;
     std::atomic<float>* toneParam    = nullptr;
     std::atomic<float>* outputParam  = nullptr;
+    std::atomic<bool> toneChanged { true };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (XjTFProcessor)
 };
