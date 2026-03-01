@@ -71,6 +71,13 @@ public:
     //==============================================================================
     juce::AudioProcessorValueTreeState apvts;
 
+    bool isBusesLayoutSupported (const BusesLayout& layouts) const override
+    {
+        if (layouts.getMainInputChannelSet()  != juce::AudioChannelSet::stereo()) return false;
+        if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo()) return false;
+        return true;
+    }
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
