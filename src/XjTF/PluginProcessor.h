@@ -45,7 +45,7 @@ public:
     void releaseResources() override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlock (juce::AudioBuffer<double>&, juce::MidiBuffer&) override;
-    bool supportsDoublePrecisionProcessing() const override { return true; }
+    bool supportsDoublePrecisionProcessing() const override { return false; }
 
     //==============================================================================
     juce::AudioProcessorEditor* createEditor() override;
