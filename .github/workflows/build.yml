@@ -30,7 +30,7 @@ jobs:
     - name: Cache juceaide
       uses: actions/cache@v3
       with:
-        path: build/modules/JUCE/extras/Build/juceaide
+        path: build/juce
         key: juceaide-linux-${{ hashFiles('juce/CMakeLists.txt') }}
 
     - name: Build
@@ -42,8 +42,8 @@ jobs:
       run: |
         mkdir -p release
         find build -name "*.so" -path "*/VST/*"  -exec mv {} release/ \;
-        find build -name "*.vst3" -path "*/VST3/*" -exec mv {} release/ \;
-        find build -name "*.lv2" -path "*/LV2/*"  -exec mv {} release/ \;
+        find build -type d -name "*.vst3" -path "*/VST3/*" -exec mv {} release/ \;
+        find build -type d -name "*.lv2" -path "*/LV2/*"  -exec mv {} release/ \;
 
     - name: Upload
       uses: actions/upload-artifact@v4
@@ -65,7 +65,7 @@ jobs:
     - name: Cache juceaide
       uses: actions/cache@v3
       with:
-        path: build/modules/JUCE/extras/Build/juceaide
+        path: build/juce
         key: juceaide-linux-${{ hashFiles('juce/CMakeLists.txt') }}
 
     - name: Build
