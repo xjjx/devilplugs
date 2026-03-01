@@ -89,21 +89,23 @@ void XjTFProcessor::releaseResources()
 
 //==============================================================================
 float XjTFProcessor::processSampleHysteresis (float input,
-                                                         HysteresisState& state,
-                                                         float drive,
-                                                         float saturation)
+                                               HysteresisState& state,
+                                               float drive,
+                                               float saturation)
 {
-    // Simplified hysteresis: stateful soft saturation
-    // drive  controls how much the input pushes the magnetic state
-    // saturation controls the knee / compression of the curve
-    float delta   = input - state.prevInput;
-    float hyst    = state.prevOutput + delta * drive;
+    // Blend between dry input and driven input based on drive amount
+    float driven = input * drive;
 
-    // tanh gives smooth, transformer-like soft clipping
-    float output  = std::tanh (hyst * saturation) / saturation;
+    // Soft saturation with state memory for subtle hysteresis character
+    float output = std::tanh (driven * saturation) / saturation;
 
-    state.prevInput  = input;
+    // Small amount of state feedback for the "memory" characteristic
+    // of magnetic hysteresis — without differentiating the signal
+    output += 0.05f * state.prevOutput;
+    output /= 1.05f; // normalize to prevent gain creep
+
     state.prevOutput = output;
+    state.prevInput  = input;
 
     return output;
 }
@@ -123,7 +125,7 @@ void XjTFProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // Low drive = subtle even-harmonic color, high drive = heavier saturation
     const float driveNorm = drive / 100.f;                    // 0..1
     const float satAmount = 1.f + driveNorm * 4.f;            // 1..5 — controls knee tightness
-    const float driveGain = 1.f + driveNorm * (2.f + character * 3.f); // more odd harmonics with character
+    const float driveGain = 1.f + driveNorm * (0.5f + character * 1.5f); // more odd harmonics with character
 
     // Update tone filters (low shelf boost / high shelf trim tied to Tone knob)
     // Tone > 0: bass bloom up + highs slightly down. Tone < 0: reverse.

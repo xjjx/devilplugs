@@ -59,7 +59,7 @@ private:
     struct DCBlocker
     {
         float x1 = 0.f, y1 = 0.f;
-        float process (float x, float R = 0.995f)
+        float process (float x, float R = 0.9998f)
         {
             float y = x - x1 + R * y1;
             x1 = x; y1 = y;
