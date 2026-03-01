@@ -30,16 +30,8 @@ jobs:
     - name: Get JUCE commit hash
       run: echo "JUCE_HASH=$(git rev-parse HEAD:juce)" >> $GITHUB_ENV
 
-    - name: Cache juceaide
-      uses: actions/cache@v3
-      with:
-        path: build/juce
-        key: juceaide-linux-${{ env.JUCE_HASH }}
-
     - name: Build
       run: |
-        ls -ltr
-        ls -ltr build/
         cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
         cmake --build build --config Release -- -j$(nproc)
 
@@ -69,12 +61,6 @@ jobs:
 
     - name: Get JUCE commit hash
       run: echo "JUCE_HASH=$(git rev-parse HEAD:juce)" >> $GITHUB_ENV
-
-    - name: Cache juceaide
-      uses: actions/cache@v3
-      with:
-        path: build/juce
-        key: juceaide-windows-${{ env.JUCE_HASH }}
 
     - name: Build
       run: |
