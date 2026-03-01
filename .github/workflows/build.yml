@@ -44,9 +44,9 @@ jobs:
     - name: Collect Artifacts
       run: |
         mkdir -p release
-        find build -name "*.so" -path "*/VST/*"  -exec mv {} release/ \;
-        find build -type d -name "*.vst3" -path "*/VST3/*" -exec mv {} release/ \;
-        find build -type d -name "*.lv2" -path "*/LV2/*"  -exec mv {} release/ \;
+        mv build/*_artefacts/Release/VST/*.so release/
+        mv build/*_artefacts/Release/LV2/*.lv2 release/
+        mv build/*_artefacts/Release/VST3/*.vst3 release/
 
     - name: Upload
       uses: actions/upload-artifact@v4
@@ -83,9 +83,9 @@ jobs:
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Force release | Out-Null
-        Get-ChildItem build -Recurse -Include *.dll  | Move-Item -Destination release\
-        Get-ChildItem build -Recurse -Include *.vst3 | Move-Item -Destination release\
-        Get-ChildItem build -Recurse -Include *.lv2  | Move-Item -Destination release\
+        Move-Item build\*_artefacts\Release\VST\*.dll  release\
+        Move-Item build\*_artefacts\Release\VST3\*.vst3 release\
+        Move-Item build\*_artefacts\Release\LV2\*.lv2  release\
 
     - name: Upload
       uses: actions/upload-artifact@v4
