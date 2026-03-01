@@ -10,24 +10,24 @@
 namespace wdft = chowdsp::wdft;
 struct TransformerWDF
 {
-    wdft::ResistiveVoltageSourceT<float> Vs { 600.0f };
-    wdft::InductorT<float> Lp { 0.02f };
-    wdft::ResistorT<float> Rload { 47000.0f };
+    wdft::ResistiveVoltageSourceT<double> Vs { 600.0f };
+    wdft::InductorT<double> Lp { 0.02f };
+    wdft::ResistorT<double> Rload { 47000.0f };
 
-    wdft::WDFSeriesT<float, decltype(Vs), decltype(Lp)> S1 { Vs, Lp };
-    wdft::WDFParallelT<float, decltype(S1), decltype(Rload)> root { S1, Rload };
+    wdft::WDFSeriesT<double, decltype(Vs), decltype(Lp)> S1 { Vs, Lp };
+    wdft::WDFParallelT<double, decltype(S1), decltype(Rload)> root { S1, Rload };
 
     void prepare (double sampleRate)
     {
         Lp.prepare (sampleRate);
     }
 
-    float process (float input)
+    double process (double input)
     {
         Vs.setVoltage (input);
         root.incident (0.0f);
         root.reflected();
-        return wdft::voltage<float> (Rload);
+        return wdft::voltage<double> (Rload);
     }
 };
 std::array<TransformerWDF, 2> transformerWDF;
@@ -43,7 +43,7 @@ public:
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
-    void processBlock (juce::AudioBuffer<double>&, juce::MidiBuffer&) override {}
+    void processBlock (juce::AudioBuffer<double>&, juce::MidiBuffer&) override;
     bool supportsDoublePrecisionProcessing() const override { return true; }
 
     //==============================================================================
@@ -81,16 +81,19 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
+    template <typename Sample>
+    void processImpl (juce::AudioBuffer<Sample>& buffer);
+
     // DSP
-    juce::dsp::Oversampling<float> oversampling;
+    juce::dsp::Oversampling<double> oversampling;
 
     // DC blocker per channel
     struct DCBlocker
     {
-        float x1 = 0.f, y1 = 0.f;
-        float process (float x, float R = 0.9998f)
+        double x1 = 0.f, y1 = 0.f;
+        double process (double x, double R = 0.9998f)
         {
-            float y = x - x1 + R * y1;
+            double y = x - x1 + R * y1;
             x1 = x; y1 = y;
             return y;
         }
@@ -99,8 +102,8 @@ private:
 
     // Frequency coloring filters
     juce::dsp::ProcessorDuplicator<
-        juce::dsp::IIR::Filter<float>,
-        juce::dsp::IIR::Coefficients<float>> lowShelf, highShelf;
+        juce::dsp::IIR::Filter<double>,
+        juce::dsp::IIR::Coefficients<double>> lowShelf, highShelf;
 
     // Parameter pointers (grabbed once in prepareToPlay)
     std::atomic<float>* driveParam   = nullptr;

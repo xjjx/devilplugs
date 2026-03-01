@@ -46,7 +46,7 @@ XjTFProcessor::XjTFProcessor()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout()),
-      oversampling (2, 2, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true)
+      oversampling (2, 2, juce::dsp::Oversampling<double>::filterHalfBandPolyphaseIIR, true)
       // 2 channels, factor 2^2 = 4x oversampling
 {
 }
@@ -78,8 +78,8 @@ void XjTFProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
                                   static_cast<uint32_t> (static_cast<size_t> (samplesPerBlock) * oversampling.getOversamplingFactor()),
                                   2 };
 
-    *lowShelf.state  = *juce::dsp::IIR::Coefficients<float>::makeLowShelf  (osRate, 120.0,  0.7f, 1.f);
-    *highShelf.state = *juce::dsp::IIR::Coefficients<float>::makeHighShelf (osRate, 8000.0, 0.7f, 1.f);
+    *lowShelf.state  = *juce::dsp::IIR::Coefficients<double>::makeLowShelf  (osRate, 120.0,  0.7f, 1.f);
+    *highShelf.state = *juce::dsp::IIR::Coefficients<double>::makeHighShelf (osRate, 8000.0, 0.7f, 1.f);
     lowShelf.prepare  (spec);
     highShelf.prepare (spec);
 }
@@ -90,8 +90,8 @@ void XjTFProcessor::releaseResources()
 }
 
 //==============================================================================
-void XjTFProcessor::processBlock (juce::AudioBuffer<float>& buffer,
-                                             juce::MidiBuffer& /*midiMessages*/)
+template <typename Sample>
+void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
 {
     juce::ScopedNoDenormals noDenormals;
 
@@ -102,24 +102,30 @@ void XjTFProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // Map drive 0..100 -> saturation parameters
     // Low drive = subtle even-harmonic color, high drive = heavier saturation
-    const float driveNorm = drive / 100.f;                    // 0..1
-    const float satAmount = 1.f + (driveNorm * driveNorm) * 2.f;        // 1..3, gentler knee
-    const float driveGain = 1.f + (driveNorm * driveNorm) * (0.3f + character * 0.8f); // much gentler
+    const double driveNorm = drive / 100.f;                    // 0..1
+    const double satAmount = 1.f + (driveNorm * driveNorm) * 2.f;        // 1..3, gentler knee
+    const double driveGain = 1.f + (driveNorm * driveNorm) * (0.3f + character * 0.8f); // much gentler
 
     // Update tone filters (low shelf boost / high shelf trim tied to Tone knob)
     // Tone > 0: bass bloom up + highs slightly down. Tone < 0: reverse.
     {
         double osRate = getSampleRate() * oversampling.getOversamplingFactor();
-        float lowGain  = juce::Decibels::decibelsToGain ( toneDb * 0.8f);  // ±4.8 dB bass
-        float highGain = juce::Decibels::decibelsToGain (-toneDb * 0.4f);  // ±2.4 dB highs (opposite)
-        *lowShelf.state  = *juce::dsp::IIR::Coefficients<float>::makeLowShelf  (osRate, 120.0,  0.7f, lowGain);
-        *highShelf.state = *juce::dsp::IIR::Coefficients<float>::makeHighShelf (osRate, 8000.0, 0.7f, highGain);
+        double lowGain  = juce::Decibels::decibelsToGain ( toneDb * 0.8f);  // ±4.8 dB bass
+        double highGain = juce::Decibels::decibelsToGain (-toneDb * 0.4f);  // ±2.4 dB highs (opposite)
+        *lowShelf.state  = *juce::dsp::IIR::Coefficients<double>::makeLowShelf  (osRate, 120.0,  0.7f, lowGain);
+        *highShelf.state = *juce::dsp::IIR::Coefficients<double>::makeHighShelf (osRate, 8000.0, 0.7f, highGain);
     }
 
-    const float outputGain = juce::Decibels::decibelsToGain (outputDb);
+    const double outputGain = juce::Decibels::decibelsToGain (outputDb);
 
     // --- Upsample ---
-    juce::dsp::AudioBlock<float> block (buffer);
+    // Convert input to double if needed
+    juce::AudioBuffer<double> doubleBuffer (buffer.getNumChannels(), buffer.getNumSamples());
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+            doubleBuffer.setSample (ch, i, (double) buffer.getSample (ch, i));
+
+    juce::dsp::AudioBlock<double> block (doubleBuffer);
     auto osBlock = oversampling.processSamplesUp (block);
 
     const int numChannels = static_cast<int> (osBlock.getNumChannels());
@@ -127,13 +133,13 @@ void XjTFProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     for (int ch = 0; ch < numChannels; ++ch)
     {
-        float* data = osBlock.getChannelPointer (static_cast<size_t> (ch));
+        double* data = osBlock.getChannelPointer (static_cast<size_t> (ch));
         auto&  dc   = dcBlocker[static_cast<size_t> (ch)];
 
         for (int i = 0; i < numSamples; ++i)
         {
             // 1. DC block (transformers are AC-coupled)
-            float s = dc.process (data[i]);
+            double s = dc.process (data[i]);
 
             // Drive into transformer
             s *= driveGain;
@@ -149,7 +155,7 @@ void XjTFProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     }
 
     // 3. Frequency coloring (on oversampled signal)
-    juce::dsp::ProcessContextReplacing<float> ctx (osBlock);
+    juce::dsp::ProcessContextReplacing<double> ctx (osBlock);
     lowShelf.process  (ctx);
     highShelf.process (ctx);
 
@@ -158,6 +164,23 @@ void XjTFProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     // 4. Output gain
     buffer.applyGain (outputGain);
+
+    // Convert back to Sample precision
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+            buffer.setSample (ch, i, (Sample) doubleBuffer.getSample (ch, i));
+}
+
+void XjTFProcessor::processBlock (juce::AudioBuffer<float>& buffer,
+                                   juce::MidiBuffer& /*midiMessages*/)
+{
+    processImpl (buffer);
+}
+
+void XjTFProcessor::processBlock (juce::AudioBuffer<double>& buffer,
+                                   juce::MidiBuffer& /*midiMessages*/)
+{
+    processImpl (buffer);
 }
 
 //==============================================================================
