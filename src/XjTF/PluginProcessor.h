@@ -116,6 +116,7 @@ private:
     std::atomic<float>* toneParam    = nullptr;
     std::atomic<float>* outputParam  = nullptr;
     std::atomic<float>* saturationParam = nullptr;
+    std::atomic<float>* oversamplingParam = nullptr;
     std::atomic<bool> toneChanged { true };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (XjTFProcessor)

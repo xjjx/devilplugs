@@ -7,6 +7,7 @@ static const juce::String CHARACTER_ID = "character";
 static const juce::String TONE_ID      = "tone";
 static const juce::String OUTPUT_ID    = "output";
 static const juce::String SATURATION_ID = "saturation";
+static const juce::String OVERSAMPLING_ID = "oversampling";
 
 //==============================================================================
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -43,6 +44,10 @@ XjTFProcessor::createParameterLayout()
         OUTPUT_ID, "Output",
         juce::NormalisableRange<float> (-12.f, 12.f, 0.1f), 0.f,
         juce::AudioParameterFloatAttributes().withLabel ("dB")));
+
+    // Oversampling
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        "oversampling", "Oversampling", true));
 
     return { params.begin(), params.end() };
 }
@@ -85,6 +90,7 @@ void XjTFProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     outputParam    = apvts.getRawParameterValue (OUTPUT_ID);
 
     // Prepare oversampling
+    oversamplingParam = apvts.getRawParameterValue (OVERSAMPLING_ID);
     oversampling.reset();
     oversampling.initProcessing (static_cast<size_t> (samplesPerBlock));
 
@@ -162,7 +168,8 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
             doubleBuffer.setSample (ch, i, (double) buffer.getSample (ch, i));
 
     juce::dsp::AudioBlock<double> block (doubleBuffer);
-    auto osBlock = oversampling.processSamplesUp (block);
+	const bool useOversampling = oversamplingParam->load() > 0.5f;
+	auto osBlock = useOversampling ? oversampling.processSamplesUp (block) : block;
 
     const int numChannels = static_cast<int> (osBlock.getNumChannels());
     const int numSamples  = static_cast<int> (osBlock.getNumSamples());
@@ -196,7 +203,8 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     highShelf.process (ctx);
 
     // --- Downsample ---
-    oversampling.processSamplesDown (block);
+    if (useOversampling)
+        oversampling.processSamplesDown (block);
 
     // 4. Output gain
     doubleBuffer.applyGain (outputGain);
