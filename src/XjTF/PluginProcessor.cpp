@@ -49,6 +49,9 @@ XjTFProcessor::XjTFProcessor()
       oversampling (2, 2, juce::dsp::Oversampling<double>::filterHalfBandPolyphaseIIR, true)
       // 2 channels, factor 2^2 = 4x oversampling
 {
+    transformerWDF[0] = std::make_unique<TransformerWDF>();
+    transformerWDF[1] = std::make_unique<TransformerWDF>();
+
     apvts.addParameterListener (TONE_ID, this);
 }
 
@@ -78,8 +81,8 @@ void XjTFProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     oversampling.initProcessing (static_cast<size_t> (samplesPerBlock));
 
     double osRate = sampleRate * oversampling.getOversamplingFactor();
-    for (auto& t : transformerWDF)
-       t.prepare (osRate);
+    for (int i = 0; i < 2; ++i)
+        transformerWDF[i]->prepare (osRate);
 
     // Reset hysteresis & DC blocker state
     dcBlocker.fill ({});
@@ -157,7 +160,7 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
             s *= driveGain;
 
             // WDF transformer model
-            s = transformerWDF[static_cast<size_t>(ch)].process (s);
+            s = transformerWDF[static_cast<size_t>(ch)]->process (s);
 
             // Soft clip for extreme drive levels
             s = std::tanh (s * satAmount) / satAmount;

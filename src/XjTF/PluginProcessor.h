@@ -30,7 +30,6 @@ struct TransformerWDF
         return wdft::voltage<double> (Rload);
     }
 };
-std::array<TransformerWDF, 2> transformerWDF;
 
 //==============================================================================
 class XjTFProcessor : public juce::AudioProcessor,
@@ -90,6 +89,8 @@ private:
 
     // DSP
     juce::dsp::Oversampling<double> oversampling;
+
+    std::unique_ptr<TransformerWDF> transformerWDF[2];
 
     // DC blocker per channel
     struct DCBlocker
