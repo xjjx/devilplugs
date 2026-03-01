@@ -27,11 +27,14 @@ jobs:
     - name: Get VST2 SDK
       run: git clone https://github.com/R-Tur/VST_SDK_2.4.git
 
+    - name: Get JUCE commit hash
+      run: echo "JUCE_HASH=$(git rev-parse HEAD:juce)" >> $GITHUB_ENV
+
     - name: Cache juceaide
       uses: actions/cache@v3
       with:
         path: build/juce
-        key: juceaide-linux-${{ hashFiles('juce/CMakeLists.txt') }}
+        key: juceaide-linux-${{ env.JUCE_HASH }}
 
     - name: Build
       run: |
@@ -62,11 +65,14 @@ jobs:
     - name: Get VST2 SDK
       run: git clone https://github.com/R-Tur/VST_SDK_2.4.git
 
+    - name: Get JUCE commit hash
+      run: echo "JUCE_HASH=$(git rev-parse HEAD:juce)" >> $GITHUB_ENV
+
     - name: Cache juceaide
       uses: actions/cache@v3
       with:
         path: build/juce
-        key: juceaide-linux-${{ hashFiles('juce/CMakeLists.txt') }}
+        key: juceaide-windows-${{ env.JUCE_HASH }}
 
     - name: Build
       run: |
