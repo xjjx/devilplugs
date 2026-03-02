@@ -119,6 +119,16 @@ private:
     };
     std::array<DCBlocker, 2> dcBlocker;
 
+    // input LPF stages
+    juce::dsp::ProcessorDuplicator<
+        juce::dsp::IIR::Filter<double>,
+        juce::dsp::IIR::Coefficients<double>> inputLPF1, inputLPF2;
+
+    // output LPF stages
+    juce::dsp::ProcessorDuplicator<
+        juce::dsp::IIR::Filter<double>,
+        juce::dsp::IIR::Coefficients<double>> outputLPF1, outputLPF2;
+
     // Frequency coloring filters
     juce::dsp::ProcessorDuplicator<
         juce::dsp::IIR::Filter<double>,

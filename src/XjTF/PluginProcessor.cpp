@@ -116,6 +116,19 @@ void XjTFProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
                                   static_cast<uint32_t> (static_cast<size_t> (samplesPerBlock) * oversampling.getOversamplingFactor()),
                                   2 };
 
+    if (getSampleRate() > 48000.0)
+    {
+        *inputLPF1.state = *juce::dsp::IIR::Coefficients<double>::makeLowPass (osRate, 22000.0, 0.7);
+        *inputLPF2.state = *juce::dsp::IIR::Coefficients<double>::makeLowPass (osRate, 22000.0, 0.7);
+        inputLPF1.prepare (spec);
+        inputLPF2.prepare (spec);
+
+        *outputLPF1.state = *juce::dsp::IIR::Coefficients<double>::makeLowPass (osRate, 22000.0, 0.7);
+        *outputLPF2.state = *juce::dsp::IIR::Coefficients<double>::makeLowPass (osRate, 22000.0, 0.7);
+        outputLPF1.prepare (spec);
+        outputLPF2.prepare (spec);
+    }
+
     *lowShelf.state  = *juce::dsp::IIR::Coefficients<double>::makeLowShelf  (osRate, 120.0,  0.7, 1.0);
     *highShelf.state = *juce::dsp::IIR::Coefficients<double>::makeHighShelf (osRate, 8000.0, 0.7, 1.0);
     lowShelf.prepare  (spec);
@@ -185,6 +198,14 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     const int numChannels = static_cast<int> (osBlock.getNumChannels());
     const int numSamples  = static_cast<int> (osBlock.getNumSamples());
 
+    // Input LPF — only at sample rates > 48kHz
+    if (getSampleRate() > 48000.0)
+    {
+        juce::dsp::ProcessContextReplacing<double> inputCtx (osBlock);
+        inputLPF1.process (inputCtx);
+        inputLPF2.process (inputCtx);
+    }
+
     for (int ch = 0; ch < numChannels; ++ch)
     {
         double* data = osBlock.getChannelPointer (static_cast<size_t> (ch));
@@ -226,6 +247,13 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     juce::dsp::ProcessContextReplacing<double> ctx (osBlock);
     lowShelf.process  (ctx);
     highShelf.process (ctx);
+
+    if (getSampleRate() > 48000.0)
+    {
+        juce::dsp::ProcessContextReplacing<double> outputCtx (osBlock);
+        outputLPF1.process (outputCtx);
+        outputLPF2.process (outputCtx);
+    }
 
     // --- Downsample ---
     if (useOversampling)
