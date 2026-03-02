@@ -206,7 +206,7 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
             {
                 // stochastic resonance: noise before saturator
                 double noise = noiseGen[static_cast<size_t> (ch)]->next();
-                s += noise * instability * 0.002;  // very subtle noise floor
+                s += noise * instability * 0.00006;  // very subtle noise floor
 
                 // saturation jitter: random variation of knee per sample
                 double jitter = 1.0 + noiseGen[static_cast<size_t> (ch)]->next()
