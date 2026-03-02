@@ -97,8 +97,7 @@ private:
 
     template <typename Sample>
     void processImpl (juce::AudioBuffer<Sample>& buffer);
-
-    float lastToneDb = -999.f;
+    void prepareDSP ();
 
     // DSP
     juce::dsp::Oversampling<double> oversampling;
@@ -143,6 +142,7 @@ private:
     std::atomic<float>* oversamplingParam = nullptr;
     std::atomic<float>* instabilityParam = nullptr;
     std::atomic<bool> toneChanged { true };
+    std::atomic<bool> oversamplingChanged { true };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (XjTFProcessor)
 };

@@ -87,10 +87,54 @@ void XjTFProcessor::parameterChanged (const juce::String& paramID, float)
 {
     if (paramID == TONE_ID)
         toneChanged = true;
+    else if (paramID == OVERSAMPLING_ID)
+        oversamplingChanged = true;
 }
 
 //==============================================================================
-void XjTFProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void XjTFProcessor::prepareDSP ()
+{
+	const bool useOversampling = oversamplingParam->load() > 0.5f;
+    const float toneDb = toneParam->load();
+
+	size_t osf = useOversampling ? oversampling.getOversamplingFactor() : 1;
+    const double currentRate = getSampleRate() * osf;
+
+    const auto specBlockSize = static_cast<uint32_t> (static_cast<size_t> (getBlockSize()) * osf);
+    juce::dsp::ProcessSpec spec { currentRate, specBlockSize, 2 };
+
+    // WDF transformer
+    for (int i = 0; i < 2; ++i)
+        transformerWDF[i]->prepare (currentRate);
+
+    // Update tone filters (low shelf boost / high shelf trim tied to Tone knob)
+    // Tone > 0: bass bloom up + highs slightly down. Tone < 0: reverse.
+    double lowGain  = juce::Decibels::decibelsToGain ((double) toneDb *  0.8);
+    double highGain = juce::Decibels::decibelsToGain ((double) toneDb * -0.4);
+    *lowShelf.state  = *juce::dsp::IIR::Coefficients<double>::makeLowShelf  (currentRate, 120.0,  0.7, lowGain);
+    *highShelf.state = *juce::dsp::IIR::Coefficients<double>::makeHighShelf (currentRate, 8000.0, 0.7, highGain);
+    lowShelf.prepare  (spec);
+    highShelf.prepare (spec);
+
+    // Input/Output LPF
+    if (getSampleRate() > 48000.0)
+    {
+        *inputLPF1.state  = *juce::dsp::IIR::Coefficients<double>::makeLowPass (currentRate, 22000.0, 0.7);
+        *inputLPF2.state  = *juce::dsp::IIR::Coefficients<double>::makeLowPass (currentRate, 22000.0, 0.7);
+        *outputLPF1.state = *juce::dsp::IIR::Coefficients<double>::makeLowPass (currentRate, 22000.0, 0.7);
+        *outputLPF2.state = *juce::dsp::IIR::Coefficients<double>::makeLowPass (currentRate, 22000.0, 0.7);
+        inputLPF1.prepare  (spec);
+        inputLPF2.prepare  (spec);
+        outputLPF1.prepare (spec);
+        outputLPF2.prepare (spec);
+    }
+
+    toneChanged = true;
+    oversamplingChanged = false;
+}
+
+//==============================================================================
+void XjTFProcessor::prepareToPlay (double /* sampleRate */, int samplesPerBlock)
 {
     // Grab parameter pointers
     driveParam     = apvts.getRawParameterValue (DRIVE_ID);
@@ -104,35 +148,10 @@ void XjTFProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     oversampling.reset();
     oversampling.initProcessing (static_cast<size_t> (samplesPerBlock));
 
-    double osRate = sampleRate * oversampling.getOversamplingFactor();
-    for (int i = 0; i < 2; ++i)
-        transformerWDF[i]->prepare (osRate);
-
     // Reset hysteresis & DC blocker state
     dcBlocker.fill ({});
 
-    // Prepare filters at oversampled rate
-    juce::dsp::ProcessSpec spec { osRate,
-                                  static_cast<uint32_t> (static_cast<size_t> (samplesPerBlock) * oversampling.getOversamplingFactor()),
-                                  2 };
-
-    if (getSampleRate() > 48000.0)
-    {
-        *inputLPF1.state = *juce::dsp::IIR::Coefficients<double>::makeLowPass (osRate, 22000.0, 0.7);
-        *inputLPF2.state = *juce::dsp::IIR::Coefficients<double>::makeLowPass (osRate, 22000.0, 0.7);
-        inputLPF1.prepare (spec);
-        inputLPF2.prepare (spec);
-
-        *outputLPF1.state = *juce::dsp::IIR::Coefficients<double>::makeLowPass (osRate, 22000.0, 0.7);
-        *outputLPF2.state = *juce::dsp::IIR::Coefficients<double>::makeLowPass (osRate, 22000.0, 0.7);
-        outputLPF1.prepare (spec);
-        outputLPF2.prepare (spec);
-    }
-
-    *lowShelf.state  = *juce::dsp::IIR::Coefficients<double>::makeLowShelf  (osRate, 120.0,  0.7, 1.0);
-    *highShelf.state = *juce::dsp::IIR::Coefficients<double>::makeHighShelf (osRate, 8000.0, 0.7, 1.0);
-    lowShelf.prepare  (spec);
-    highShelf.prepare (spec);
+    prepareDSP ();
 }
 
 void XjTFProcessor::releaseResources()
@@ -161,9 +180,9 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
 
     const float drive     = driveParam->load();
     const float character = characterParam->load();
-    const float toneDb    = toneParam->load();
     const float outputDb  = outputParam->load();
     const float instability = instabilityParam->load();
+	const bool useOversampling = oversamplingParam->load() > 0.5f;
 
     // Map drive 0..100 -> saturation parameters
     // Low drive = subtle even-harmonic color, high drive = heavier saturation
@@ -171,17 +190,12 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     const double satAmount = 1.0 + (driveNorm * driveNorm) * 2.0;        // 1..3, gentler knee
     const double driveGain = 1.0 + (driveNorm * driveNorm) * (0.3 + character * 0.8); // much gentler
 
-    // Update tone filters (low shelf boost / high shelf trim tied to Tone knob)
-    // Tone > 0: bass bloom up + highs slightly down. Tone < 0: reverse.
+    if (oversamplingChanged.exchange (false))
+        prepareDSP ();
+
     if (toneChanged.exchange (false))
-    {
-        lastToneDb = toneDb;
-        double osRate   = getSampleRate() * oversampling.getOversamplingFactor();
-        double lowGain  = juce::Decibels::decibelsToGain ((double) toneDb *  0.8);
-        double highGain = juce::Decibels::decibelsToGain ((double) toneDb * -0.4);
-        *lowShelf.state  = *juce::dsp::IIR::Coefficients<double>::makeLowShelf  (osRate, 120.0, 0.7, lowGain);
-        *highShelf.state = *juce::dsp::IIR::Coefficients<double>::makeHighShelf (osRate, 8000.0, 0.7, highGain);
-    }
+        prepareDSP ();
+
     const double outputGain = juce::Decibels::decibelsToGain (outputDb);
 
     // --- Upsample ---
@@ -192,7 +206,6 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
             doubleBuffer.setSample (ch, i, (double) buffer.getSample (ch, i));
 
     juce::dsp::AudioBlock<double> block (doubleBuffer);
-	const bool useOversampling = oversamplingParam->load() > 0.5f;
 	auto osBlock = useOversampling ? oversampling.processSamplesUp (block) : block;
 
     const int numChannels = static_cast<int> (osBlock.getNumChannels());
@@ -211,7 +224,7 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     for (int ch = 0; ch < numChannels; ++ch)
     {
         double* data = osBlock.getChannelPointer (static_cast<size_t> (ch));
-        auto&  dc   = dcBlocker[static_cast<size_t> (ch)];
+        auto& dc = dcBlocker[static_cast<size_t> (ch)];
 
         for (int i = 0; i < numSamples; ++i)
         {
@@ -249,6 +262,7 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     juce::dsp::ProcessContextReplacing<double> ctx (osBlock);
     lowShelf.process  (ctx);
     highShelf.process (ctx);
+
 /*
     if (getSampleRate() > 48000.0)
     {
