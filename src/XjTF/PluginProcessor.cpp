@@ -199,12 +199,14 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     const int numSamples  = static_cast<int> (osBlock.getNumSamples());
 
     // Input LPF — only at sample rates > 48kHz
+/*
     if (getSampleRate() > 48000.0)
     {
         juce::dsp::ProcessContextReplacing<double> inputCtx (osBlock);
         inputLPF1.process (inputCtx);
         inputLPF2.process (inputCtx);
     }
+*/
 
     for (int ch = 0; ch < numChannels; ++ch)
     {
@@ -247,13 +249,14 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     juce::dsp::ProcessContextReplacing<double> ctx (osBlock);
     lowShelf.process  (ctx);
     highShelf.process (ctx);
-
+/*
     if (getSampleRate() > 48000.0)
     {
         juce::dsp::ProcessContextReplacing<double> outputCtx (osBlock);
         outputLPF1.process (outputCtx);
         outputLPF2.process (outputCtx);
     }
+*/
 
     // --- Downsample ---
     if (useOversampling)
