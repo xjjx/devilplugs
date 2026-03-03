@@ -44,6 +44,25 @@ struct NoiseGen
     }
 };
 
+struct DCBlocker
+{
+	double x1 = 0.0, y1 = 0.0, dcR = 0.0;
+	void prepare (double sampleRate)
+	{
+		const double fc = 5.0; // 5 Hz DC blocker
+		dcR = std::exp (-2.0 * juce::MathConstants<double>::pi * fc / sampleRate);
+        x1 = y1 = 0.0;
+	}
+
+	double process (double x)
+	{
+		double y = x - x1 + dcR * y1;
+		x1 = x;
+		y1 = y;
+		return y;
+	}
+};
+
 //==============================================================================
 class XjTFProcessor : public juce::AudioProcessor,
                       public juce::AudioProcessorValueTreeState::Listener
@@ -104,19 +123,7 @@ private:
 
     std::unique_ptr<TransformerWDF> transformerWDF[2];
     std::unique_ptr<NoiseGen> noiseGen[2];
-
-    // DC blocker per channel
-    struct DCBlocker
-    {
-        double x1 = 0.f, y1 = 0.f;
-        double process (double x, double R = 0.9998f)
-        {
-            double y = x - x1 + R * y1;
-            x1 = x; y1 = y;
-            return y;
-        }
-    };
-    std::array<DCBlocker, 2> dcBlocker;
+    std::unique_ptr<DCBlocker> dcBlocker[2];
 
     // input LPF stages
     juce::dsp::ProcessorDuplicator<

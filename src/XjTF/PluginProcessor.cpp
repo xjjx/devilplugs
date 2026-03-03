@@ -68,10 +68,12 @@ XjTFProcessor::XjTFProcessor()
       oversampling (2, 2, juce::dsp::Oversampling<double>::filterHalfBandPolyphaseIIR, true)
       // 2 channels, factor 2^2 = 4x oversampling
 {
-    transformerWDF[0] = std::make_unique<TransformerWDF>();
-    transformerWDF[1] = std::make_unique<TransformerWDF>();
-    noiseGen[0] = std::make_unique<NoiseGen>();
-    noiseGen[1] = std::make_unique<NoiseGen>();
+    for (int i = 0; i < 2; ++i)
+    {
+        dcBlocker[i] = std::make_unique<DCBlocker>();
+        transformerWDF[i] = std::make_unique<TransformerWDF>();
+        noiseGen[i] = std::make_unique<NoiseGen>();
+    }
 
     apvts.addParameterListener (TONE_ID, this);
     apvts.addParameterListener (OVERSAMPLING_ID, this);
@@ -103,9 +105,12 @@ void XjTFProcessor::prepareDSP ()
     const auto specBlockSize = static_cast<uint32_t> (static_cast<size_t> (getBlockSize()) * osf);
     juce::dsp::ProcessSpec spec { currentRate, specBlockSize, 2 };
 
-    // WDF transformer
+    // WDF transformer and DC Blocker
     for (int i = 0; i < 2; ++i)
+    {
+	    dcBlocker[i]->prepare (currentRate);
         transformerWDF[i]->prepare (currentRate);
+    }
 
     // Update tone filters (low shelf boost / high shelf trim tied to Tone knob)
     // Tone > 0: bass bloom up + highs slightly down. Tone < 0: reverse.
@@ -144,9 +149,6 @@ void XjTFProcessor::prepareToPlay (double /* sampleRate */, int samplesPerBlock)
     oversamplingParam = apvts.getRawParameterValue (OVERSAMPLING_ID);
     oversampling.reset();
     oversampling.initProcessing (static_cast<size_t> (samplesPerBlock));
-
-    // Reset hysteresis & DC blocker state
-    dcBlocker.fill ({});
 
     prepareDSP ();
 }
@@ -216,12 +218,10 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     for (int ch = 0; ch < numChannels; ++ch)
     {
         double* data = osBlock.getChannelPointer (static_cast<size_t> (ch));
-        auto& dc = dcBlocker[static_cast<size_t> (ch)];
-
         for (int i = 0; i < numSamples; ++i)
         {
             // 1. DC block (transformers are AC-coupled)
-            double s = dc.process (data[i]);
+            double s = dcBlocker[static_cast<size_t> (ch)]->process (data[i]);
 
             // Drive into transformer
             s *= driveGain;
