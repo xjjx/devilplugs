@@ -33,7 +33,7 @@ jobs:
     - name: Build
       run: |
         cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-        cmake --build build --config Release -- -j$(nproc)
+        cmake --build build --config Release --parallel
 
     - name: Collect Artifacts
       run: |
