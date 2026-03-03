@@ -56,3 +56,13 @@ target_link_libraries(XjTF
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+if (MSVC)
+    target_compile_options(XjTF PRIVATE
+        $<$<CONFIG:Release>:/O2 /arch:AVX>
+    )
+else()
+    target_compile_options(XjTF PRIVATE
+        $<$<CONFIG:Release>:-O3 -msse4.1 -mfpmath=sse -ffast-math>
+    )
+endif()
