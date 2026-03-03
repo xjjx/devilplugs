@@ -141,8 +141,7 @@ private:
     std::atomic<float>* saturationParam = nullptr;
     std::atomic<float>* oversamplingParam = nullptr;
     std::atomic<float>* instabilityParam = nullptr;
-    std::atomic<bool> toneChanged { true };
-    std::atomic<bool> oversamplingChanged { true };
+    std::atomic<bool> needPrepare { true };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (XjTFProcessor)
 };

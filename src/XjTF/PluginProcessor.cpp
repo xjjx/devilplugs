@@ -74,21 +74,21 @@ XjTFProcessor::XjTFProcessor()
     noiseGen[1] = std::make_unique<NoiseGen>();
 
     apvts.addParameterListener (TONE_ID, this);
+    apvts.addParameterListener (OVERSAMPLING_ID, this);
     saturationParam = apvts.getRawParameterValue (SATURATION_ID);
 }
 
 XjTFProcessor::~XjTFProcessor()
 {
     apvts.removeParameterListener (TONE_ID, this);
+    apvts.removeParameterListener (OVERSAMPLING_ID, this);
 }
 
 //==============================================================================
 void XjTFProcessor::parameterChanged (const juce::String& paramID, float)
 {
-    if (paramID == TONE_ID)
-        toneChanged = true;
-    else if (paramID == OVERSAMPLING_ID)
-        oversamplingChanged = true;
+    if (paramID == TONE_ID || paramID == OVERSAMPLING_ID)
+        needPrepare = true;
 }
 
 //==============================================================================
@@ -187,10 +187,7 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     const double satAmount = 1.0 + (driveNorm * driveNorm) * 2.0;        // 1..3, gentler knee
     const double driveGain = 1.0 + (driveNorm * driveNorm) * (0.3 + character * 0.8); // much gentler
 
-    if (oversamplingChanged.exchange (false))
-        prepareDSP ();
-
-    if (toneChanged.exchange (false))
+    if (needPrepare.exchange (false))
         prepareDSP ();
 
     const double outputGain = juce::Decibels::decibelsToGain (outputDb);
