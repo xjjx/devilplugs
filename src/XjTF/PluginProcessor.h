@@ -2,34 +2,9 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
-#include <chowdsp_wdf/chowdsp_wdf.h>
 
-#include <chowdsp_wdf/chowdsp_wdf.h>
+#include "TransformerWDF.h"
 
-// Transformer WDF circuit per channel:
-namespace wdft = chowdsp::wdft;
-struct TransformerWDF
-{
-    wdft::ResistiveVoltageSourceT<double> Vs { 600.0f };
-    wdft::InductorT<double> Lp { 0.02f };
-    wdft::ResistorT<double> Rload { 47000.0f };
-
-    wdft::WDFSeriesT<double, decltype(Vs), decltype(Lp)> S1 { Vs, Lp };
-    wdft::WDFParallelT<double, decltype(S1), decltype(Rload)> root { S1, Rload };
-
-    void prepare (double sampleRate)
-    {
-        Lp.prepare (sampleRate);
-    }
-
-    double process (double input)
-    {
-        Vs.setVoltage (input);
-        root.incident (0.0f);
-        root.reflected();
-        return wdft::voltage<double> (Rload);
-    }
-};
 
 // fast xorshift random, one per channel
 struct NoiseGen
@@ -123,7 +98,6 @@ private:
 
     std::unique_ptr<TransformerWDF> transformerWDF[2];
     std::unique_ptr<NoiseGen> noiseGen[2];
-    std::unique_ptr<DCBlocker> dcBlocker[2];
 
     // input LPF stages
     juce::dsp::ProcessorDuplicator<

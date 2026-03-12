@@ -70,7 +70,6 @@ XjTFProcessor::XjTFProcessor()
 {
     for (int i = 0; i < 2; ++i)
     {
-        dcBlocker[i] = std::make_unique<DCBlocker>();
         transformerWDF[i] = std::make_unique<TransformerWDF>();
         noiseGen[i] = std::make_unique<NoiseGen>();
     }
@@ -108,7 +107,6 @@ void XjTFProcessor::prepareDSP ()
     // WDF transformer and DC Blocker
     for (int i = 0; i < 2; ++i)
     {
-	    dcBlocker[i]->prepare (currentRate);
         transformerWDF[i]->prepare (currentRate);
     }
 
@@ -192,6 +190,9 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     if (needPrepare.exchange (false))
         prepareDSP ();
 
+    for (size_t ch = 0; ch < std::size (transformerWDF); ++ch)
+        transformerWDF[ch]->setDriveParams (driveNorm, (double) character);
+
     const double outputGain = juce::Decibels::decibelsToGain (outputDb);
 
     // --- Upsample ---
@@ -220,8 +221,7 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
         double* data = osBlock.getChannelPointer (static_cast<size_t> (ch));
         for (int i = 0; i < numSamples; ++i)
         {
-            // 1. DC block (transformers are AC-coupled)
-            double s = dcBlocker[static_cast<size_t> (ch)]->process (data[i]);
+            double s = data[i];
 
             // Drive into transformer
             s *= driveGain;
