@@ -43,7 +43,7 @@ jobs:
         mv build/*_artefacts/Release/VST3/*.vst3 release/
 
     - name: Upload
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: linux
         path: release/**
@@ -76,7 +76,7 @@ jobs:
         Move-Item build\*_artefacts\Release\LV2\*.lv2  release\
 
     - name: Upload
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: windows
         path: release/**
