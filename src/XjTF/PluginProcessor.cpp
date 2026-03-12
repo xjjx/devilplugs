@@ -68,38 +68,49 @@ XjTFProcessor::XjTFProcessor()
     }
 
     apvts.addParameterListener (TONE_ID, this);
+    apvts.addParameterListener (DRIVE_ID, this);
+    apvts.addParameterListener (CHARACTER_ID, this);
     apvts.addParameterListener (OVERSAMPLING_ID, this);
 }
 
 XjTFProcessor::~XjTFProcessor()
 {
     apvts.removeParameterListener (TONE_ID, this);
+    apvts.removeParameterListener (DRIVE_ID, this);
+    apvts.removeParameterListener (CHARACTER_ID, this);
     apvts.removeParameterListener (OVERSAMPLING_ID, this);
 }
 
 //==============================================================================
 void XjTFProcessor::parameterChanged (const juce::String& paramID, float)
 {
-    if (paramID == TONE_ID || paramID == OVERSAMPLING_ID)
+    if (
+        paramID == TONE_ID ||
+        paramID == DRIVE_ID ||
+        paramID == CHARACTER_ID ||
+        paramID == OVERSAMPLING_ID
+    )
         needPrepare = true;
 }
 
 //==============================================================================
 void XjTFProcessor::prepareDSP ()
 {
-	const bool useOversampling = oversamplingParam->load() > 0.5f;
     const float toneDb = toneParam->load();
 
-	size_t osf = useOversampling ? oversampling.getOversamplingFactor() : 1;
-    const double currentRate = getSampleRate() * osf;
+    const double currentRate = getSampleRate();
 
-    const auto specBlockSize = static_cast<uint32_t> (static_cast<size_t> (getBlockSize()) * osf);
+    const auto specBlockSize = static_cast<uint32_t> (static_cast<size_t> (getBlockSize()));
     juce::dsp::ProcessSpec spec { currentRate, specBlockSize, 2 };
 
     // WDF transformer and DC Blocker
+    const float drive = driveParam->load();
+    const float character = characterParam->load();
+    const double driveNorm = drive / 100.0; // 0..1
     for (int i = 0; i < 2; ++i)
     {
         transformerWDF[i]->prepare (currentRate);
+        transformerWDF[i]->setDriveParams (driveNorm, (double) character);
     }
 
     // Update tone filters (low shelf boost / high shelf trim tied to Tone knob)
@@ -170,44 +181,43 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     if (needPrepare.exchange (false))
         prepareDSP ();
 
-    for (size_t ch = 0; ch < std::size (transformerWDF); ++ch)
-        transformerWDF[ch]->setDriveParams (driveNorm, (double) character);
-
     const double outputGain = juce::Decibels::decibelsToGain (outputDb);
+    const int numChannels = static_cast<int> (buffer.getNumChannels());
 
-    // --- Upsample ---
-    // Convert input to double if needed
+    // 1. Run transformer at base rate
     juce::AudioBuffer<double> doubleBuffer (buffer.getNumChannels(), buffer.getNumSamples());
-    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    for (int ch = 0; ch < numChannels; ++ch)
+    {
         for (int i = 0; i < buffer.getNumSamples(); ++i)
-            doubleBuffer.setSample (ch, i, (double) buffer.getSample (ch, i));
+        {
+            double s = (double) buffer.getSample (ch, i);
+            s *= driveGain;
+            s = transformerWDF[static_cast<size_t> (ch)]->process (s);
+            doubleBuffer.setSample (ch, i, s);
+        }
+    }
 
     juce::dsp::AudioBlock<double> block (doubleBuffer);
-	auto osBlock = useOversampling ? oversampling.processSamplesUp (block) : block;
 
-    const int numChannels = static_cast<int> (osBlock.getNumChannels());
-    const int numSamples  = static_cast<int> (osBlock.getNumSamples());
-
-    // Input LPF — only at sample rates > 48kHz
+    // 2. Input LPF — only at sample rates > 48kHz
     if (getSampleRate() > 48000.0)
     {
-        juce::dsp::ProcessContextReplacing<double> inputCtx (osBlock);
+        juce::dsp::ProcessContextReplacing<double> inputCtx (block);
         inputLPF1.process (inputCtx);
         inputLPF2.process (inputCtx);
     }
 
+    // 3. Upsample only for tanh saturation
+	auto osBlock = useOversampling ? oversampling.processSamplesUp (block) : block;
+
+    // 4. Tanh saturation (nonlinear — benefits from oversampling)
+    const int numSamples  = static_cast<int> (osBlock.getNumSamples());
     for (int ch = 0; ch < numChannels; ++ch)
     {
         double* data = osBlock.getChannelPointer (static_cast<size_t> (ch));
         for (int i = 0; i < numSamples; ++i)
         {
             double s = data[i];
-
-            // Drive into transformer
-            s *= driveGain;
-
-            // WDF transformer model
-            s = transformerWDF[static_cast<size_t>(ch)]->process (s);
 
             // Soft clip for extreme drive levels
             if (instability > 0.0)
@@ -231,26 +241,26 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
         }
     }
 
-    // 3. Frequency coloring (on oversampled signal)
-    juce::dsp::ProcessContextReplacing<double> ctx (osBlock);
+    // 5. Downsample
+    if (useOversampling)
+        oversampling.processSamplesDown (block);
+
+    // 6. Frequency coloring (on oversampled signal)
+    juce::dsp::ProcessContextReplacing<double> ctx (block);
     lowShelf.process  (ctx);
     highShelf.process (ctx);
 
+    // 7. Output gain
+    doubleBuffer.applyGain (outputGain);
+
     if (getSampleRate() > 48000.0)
     {
-        juce::dsp::ProcessContextReplacing<double> outputCtx (osBlock);
+        juce::dsp::ProcessContextReplacing<double> outputCtx (block);
         outputLPF1.process (outputCtx);
         outputLPF2.process (outputCtx);
     }
 
-    // --- Downsample ---
-    if (useOversampling)
-        oversampling.processSamplesDown (block);
-
-    // 4. Output gain
-    doubleBuffer.applyGain (outputGain);
-
-    // Convert back to Sample precision
+    // 8. Convert back to Sample precision
     for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
         for (int i = 0; i < buffer.getNumSamples(); ++i)
             buffer.setSample (ch, i, (Sample) doubleBuffer.getSample (ch, i));
