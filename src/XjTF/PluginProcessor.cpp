@@ -6,7 +6,6 @@ static const juce::String DRIVE_ID     = "drive";
 static const juce::String CHARACTER_ID = "character";
 static const juce::String TONE_ID      = "tone";
 static const juce::String OUTPUT_ID    = "output";
-static const juce::String SATURATION_ID = "saturation";
 static const juce::String OVERSAMPLING_ID = "oversampling";
 static const juce::String INSTABILITY_ID = "instability";
 
@@ -15,12 +14,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout
 XjTFProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
-
-    // Saturation
-    params.push_back (std::make_unique<juce::AudioParameterChoice> (
-        "saturation", "Saturation",
-        juce::StringArray { "Algebraic", "Cubic", "Arctangent", "Exponential", "Asymmetric", "Tanh" },
-        0));
 
     // Drive: 0..100 %
     params.push_back (std::make_unique<juce::AudioParameterFloat> (
@@ -76,7 +69,6 @@ XjTFProcessor::XjTFProcessor()
 
     apvts.addParameterListener (TONE_ID, this);
     apvts.addParameterListener (OVERSAMPLING_ID, this);
-    saturationParam = apvts.getRawParameterValue (SATURATION_ID);
 }
 
 XjTFProcessor::~XjTFProcessor()
@@ -157,18 +149,6 @@ void XjTFProcessor::releaseResources()
 }
 
 //==============================================================================
-static inline double saturate (double s, double satAmount, int mode) noexcept
-{
-    switch (mode)
-    {
-        case 1: return s - (s * s * s) / (3.0 * (1.0 + std::abs (s)));
-        case 2: return std::atan (s * satAmount) / (satAmount * (M_PI / 2.0));
-        case 3: return std::copysign (1.0 - std::exp (-std::abs (s * satAmount)), s) / satAmount;
-        case 4: return s / (1.0 + std::abs (s * satAmount) + 0.1 * s * satAmount);
-        case 5: return std::tanh (s * satAmount) / satAmount;
-        default: return s / (1.0 + std::abs (s * satAmount));
-    }
-}
 
 template <typename Sample>
 void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
@@ -239,11 +219,12 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
                 // saturation jitter: random variation of knee per sample
                 double jitter = 1.0 + noiseGen[static_cast<size_t> (ch)]->next()
                             * instability * 0.05;
-                s = saturate (s, satAmount * jitter, static_cast<int> (saturationParam->load()));
+                double amount = satAmount * jitter;
+                s = std::tanh (s * amount) / amount;
             }
             else
             {
-                s = saturate (s, satAmount, static_cast<int> (saturationParam->load()));
+                s = std::tanh (s * satAmount) / satAmount;
             }
 
             data[i] = s;

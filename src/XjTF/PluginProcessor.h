@@ -119,7 +119,6 @@ private:
     std::atomic<float>* characterParam = nullptr;
     std::atomic<float>* toneParam    = nullptr;
     std::atomic<float>* outputParam  = nullptr;
-    std::atomic<float>* saturationParam = nullptr;
     std::atomic<float>* oversamplingParam = nullptr;
     std::atomic<float>* instabilityParam = nullptr;
     std::atomic<bool> needPrepare { true };
