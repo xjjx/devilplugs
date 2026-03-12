@@ -19,25 +19,6 @@ struct NoiseGen
     }
 };
 
-struct DCBlocker
-{
-	double x1 = 0.0, y1 = 0.0, dcR = 0.0;
-	void prepare (double sampleRate)
-	{
-		const double fc = 5.0; // 5 Hz DC blocker
-		dcR = std::exp (-2.0 * juce::MathConstants<double>::pi * fc / sampleRate);
-        x1 = y1 = 0.0;
-	}
-
-	double process (double x)
-	{
-		double y = x - x1 + dcR * y1;
-		x1 = x;
-		y1 = y;
-		return y;
-	}
-};
-
 //==============================================================================
 class XjTFProcessor : public juce::AudioProcessor,
                       public juce::AudioProcessorValueTreeState::Listener
