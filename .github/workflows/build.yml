@@ -1,4 +1,4 @@
-name: Build XjTF
+name: Build XjPlugs
 on:
   push:
     branches: [ main ]
@@ -104,8 +104,8 @@ jobs:
     - name: Package
       run: |
         COMMIT=$(git rev-parse --short HEAD)
-        zip -r XjTF-$COMMIT.zip artifacts/
-        echo "ZIP=XjTF-$COMMIT.zip" >> $GITHUB_ENV
+        zip -r XjPlugs-$COMMIT.zip artifacts/
+        echo "ZIP=XjPlugs-$COMMIT.zip" >> $GITHUB_ENV
 
     - name: Release
       uses: softprops/action-gh-release@v2
