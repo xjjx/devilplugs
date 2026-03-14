@@ -24,7 +24,7 @@ public:
         // Removes DC offset and sub-bass before saturation (avoids asymmetric clipping)
         dcBlocker.prepare(spec);
         dcBlocker.setType(juce::dsp::StateVariableTPTFilterType::highpass);
-        dcBlocker.setCutoffFrequency(30.0f);
+        dcBlocker.setCutoffFrequency(5.0f);
 
         // ── Stage 3: Iron smoothing / output lowpass ──────────────────────
         // Models the bandwidth limiting of transformer iron core
