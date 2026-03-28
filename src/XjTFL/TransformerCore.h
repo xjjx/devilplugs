@@ -33,7 +33,7 @@ public:
         // 16kHz = clean/modern
         ironFilter.prepare(spec);
         ironFilter.setType(juce::dsp::StateVariableTPTFilterType::lowpass);
-        ironFilter.setCutoffFrequency(16000.0f);
+        ironFilter.setCutoffFrequency(22000.0f);
 
         rng.seed(0);
     }
