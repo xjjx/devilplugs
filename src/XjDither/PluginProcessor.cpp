@@ -61,12 +61,17 @@ void XjDitherProcessor::applyDither (juce::AudioBuffer<FloatType>& buffer)
 
 	for (int ch = 0; ch < numChannels; ++ch)
 	{
-		fillNoise (noise.data(), numSamples, ch);
+		FloatType* data = buffer.getWritePointer(ch);
+		double* noisePtr = noise.data();
 
-		FloatType* data = buffer.getWritePointer (ch);
+		fillNoise(noisePtr, static_cast<int>(numSamples), ch);
 
+		// Tight, vectorizable loop
 		for (size_t i = 0; i < numSamples; ++i)
-			data[i] = static_cast<FloatType> (quantise24 (static_cast<double> (data[i]) + noise[i]));
+		{
+			const double x = static_cast<double>(data[i]) + noisePtr[i];
+			data[i] = static_cast<FloatType>(quantise24(x));
+		}
 	}
 }
 
