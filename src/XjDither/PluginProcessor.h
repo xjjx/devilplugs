@@ -59,8 +59,7 @@ private:
     //==============================================================================
     // Noise scratch buffers — allocated once in prepareToPlay, reused each block.
     // Avoids any heap allocation in the audio thread.
-    std::vector<double> noiseL;
-    std::vector<double> noiseR;
+    std::vector<double> noise;
 
     //==============================================================================
     static uint64_t splitmix64 (uint64_t& x) noexcept
