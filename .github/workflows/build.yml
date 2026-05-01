@@ -103,9 +103,9 @@ jobs:
 
     - name: Package
       run: |
-        COMMIT=$(git rev-parse --short HEAD)
-        zip -r XjPlugs-$COMMIT.zip artifacts/
-        echo "ZIP=XjPlugs-$COMMIT.zip" >> $GITHUB_ENV
+        RELEASE_NUM=${{ github.run_number }}
+        cd artifacts && zip -r ../XjPlugs-v$RELEASE_NUM.zip .
+        echo "ZIP=XjPlugs-v$RELEASE_NUM.zip" >> $GITHUB_ENV
 
     - name: Release
       uses: softprops/action-gh-release@v2
