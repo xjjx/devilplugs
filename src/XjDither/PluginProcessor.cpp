@@ -40,11 +40,21 @@ static constexpr double kInvScale = 1.0 / static_cast<double>(1 << (kBitDepth - 
 
 inline double quantise24 (double sample) noexcept
 {
-	// Clamp to valid range first to avoid overflow on the floor()
-	sample = juce::jlimit (-1.0, 1.0, sample);
+	// Clamp
+	sample = sample >  1.0 ?  1.0 : sample;
+	sample = sample < -1.0 ? -1.0 : sample;
 
-	// Scale to integer domain, truncate, scale back
-	return std::floor (sample * kScale) * kInvScale;
+	// Scale to integer domain
+	const double scaled = sample * kScale;
+
+	// Truncate toward negative infinity (floor behaviour) via integer cast
+	// Valid as long as |scaled| < 2^31, which is guaranteed since kScale = 2^23
+	// and sample is clamped to [-1, 1]
+	const auto truncated = static_cast<int32_t>(scaled);
+
+	// Correct for negative values — integer cast truncates toward zero,
+	// but floor truncates toward -infinity, so subtract 1 if we rounded up
+	return static_cast<double>(truncated - (scaled < static_cast<double>(truncated) ? 1 : 0)) * kInvScale;
 }
 
 //==============================================================================
@@ -61,10 +71,12 @@ void XjDitherProcessor::applyDither (juce::AudioBuffer<FloatType>& buffer)
 
 	for (int ch = 0; ch < numChannels; ++ch)
 	{
-		FloatType* data = buffer.getWritePointer(ch);
-		double* noisePtr = noise.data();
+		// This __restrict__ tells the compiler that data and noisePtr
+		// don't alias each other — it can then load/store them independently in SIMD registers:
+		FloatType* __restrict__ data = buffer.getWritePointer(ch);
+		double* __restrict__ noisePtr = noise.data();
 
-		fillNoise(noisePtr, static_cast<int>(numSamples), ch);
+		fillNoise(noisePtr, numSamples, ch);
 
 		// Tight, vectorizable loop
 		for (size_t i = 0; i < numSamples; ++i)

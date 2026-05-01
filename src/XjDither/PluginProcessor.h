@@ -125,9 +125,9 @@ private:
     // Isolated as a separate loop so the compiler sees a simple
     // sequential write — the addition loop below is then a plain
     // read+add+write which auto-vectorises cleanly to SSE2/AVX.
-    void fillNoise (double* dst, int n, int ch) noexcept
+    void fillNoise (double* dst, size_t n, int ch) noexcept
     {
-        for (int i = 0; i < n; ++i)
+        for (size_t i = 0; i < n; ++i)
             dst[i] = tpdfSample (ch);
     }
 
