@@ -36,30 +36,6 @@ void XjDitherProcessor::releaseResources()
 	noiseR.shrink_to_fit();
 }
 
-// Scale factor: 2^23 for 24-bit (signed range -2^23 to 2^23-1)
-static constexpr int	kBitDepth = 24;
-static constexpr double kScale	  = static_cast<double>(1 << (kBitDepth - 1));
-static constexpr double kInvScale = 1.0 / static_cast<double>(1 << (kBitDepth - 1));
-
-inline double quantise24 (double sample) noexcept
-{
-	// Clamp
-	sample = sample >  1.0 ?  1.0 : sample;
-	sample = sample < -1.0 ? -1.0 : sample;
-
-	// Scale to integer domain
-	const double scaled = sample * kScale;
-
-	// Truncate toward negative infinity (floor behaviour) via integer cast
-	// Valid as long as |scaled| < 2^31, which is guaranteed since kScale = 2^23
-	// and sample is clamped to [-1, 1]
-	const auto truncated = static_cast<int32_t>(scaled);
-
-	// Correct for negative values — integer cast truncates toward zero,
-	// but floor truncates toward -infinity, so subtract 1 if we rounded up
-	return static_cast<double>(truncated - (scaled < static_cast<double>(truncated) ? 1 : 0)) * kInvScale;
-}
-
 //==============================================================================
 template <typename FloatType>
 void XjDitherProcessor::applyDither (juce::AudioBuffer<FloatType>& buffer)
