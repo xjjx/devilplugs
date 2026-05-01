@@ -4,6 +4,11 @@
 #include <cstdint>
 #include <vector>
 
+// 24-bit quantisation constants
+static constexpr int	kBitDepth = 24;
+static constexpr double kScale	  = static_cast<double> (1 << (kBitDepth - 1));
+static constexpr double kInvScale = 1.0 / static_cast<double> (1 << (kBitDepth - 1));
+
 class XjDitherProcessor : public juce::AudioProcessor
 {
 public:
@@ -43,41 +48,13 @@ public:
 	bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
 
 private:
-	//==============================================================================
-	// 24-bit quantisation constants
-	static constexpr int	kBitDepth = 24;
-	static constexpr double kScale	  = static_cast<double> (1 << (kBitDepth - 1));
-	static constexpr double kInvScale = 1.0 / static_cast<double> (1 << (kBitDepth - 1));
-
-	inline double quantise24 (double sample) noexcept
-	{
-		// Clamp — compiles to minsd/maxsd, no branch
-		sample = sample >  1.0 ?  1.0 : sample;
-		sample = sample < -1.0 ? -1.0 : sample;
-
-		// Scale to integer domain
-		const double scaled = sample * kScale;
-
-		// Floor via integer cast — valid because |scaled| < 2^23,
-		// well within int32_t range. No library call, fully inlinable.
-		const auto truncated = static_cast<int32_t> (scaled);
-		return static_cast<double> (truncated - (scaled < static_cast<double> (truncated) ? 1 : 0)) * kInvScale;
-	}
-
-	//==============================================================================
-	// Scaling factor: top 53 bits of uint64 -> double in [0, 1)
-	static constexpr double kU64ToDouble = 1.0 / 9007199254740992.0;
-
 	// xoshiro256** state.
 	// state[0..3] = Left / Mono, state[4..7] = Right.
 	uint64_t state[8] {};
 
 	//==============================================================================
-	// Noise scratch buffers — allocated once in prepareToPlay.
-	// noiseL: Left channel / Mono
-	// noiseR: Right channel (stereo path only)
-	std::vector<double> noiseL;
-	std::vector<double> noiseR;
+	// Noise scratch buffer — allocated once in prepareToPlay.
+	std::vector<double> noise;
 
 	//==============================================================================
 	static uint64_t splitmix64 (uint64_t& x) noexcept
@@ -119,6 +96,8 @@ private:
 
 	static inline double toDouble (uint64_t raw) noexcept
 	{
+		// Scaling factor: top 53 bits of uint64 -> double in [0, 1)
+		static constexpr double kU64ToDouble = 1.0 / 9007199254740992.0;
 		return static_cast<double> (raw >> 11) * kU64ToDouble * 2.0 - 1.0;
 	}
 
@@ -127,11 +106,9 @@ private:
 		uint64_t* base = state + (ch * 4);
 		const double a = toDouble (xoshiroNext (base));
 		const double b = toDouble (xoshiroNext (base));
-		return (a + b) * (0.5 * kOneLSB);
+		// One 24-bit LSB in normalised float domain: 1.0 / 2^23
+		return (a + b) * (0.5 * kInvScale);
 	}
-
-	// One 24-bit LSB in normalised float domain: 1.0 / 2^23
-	static constexpr double kOneLSB = kInvScale;
 
 	void fillNoise (double* dst, int n, int ch) noexcept
 	{

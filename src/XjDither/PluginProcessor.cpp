@@ -22,18 +22,25 @@ void XjDitherProcessor::prepareToPlay (double /*sampleRate*/, int samplesPerBloc
 	// Pre-allocate noise scratch buffers — never allocate in the audio thread.
 	// Add a small headroom margin in case the host sends a slightly larger block.
 	const size_t capacity = static_cast<std::size_t>(samplesPerBlock + 32);
-	noiseL.resize (capacity);
-	noiseR.resize (capacity);
+	noise.resize (capacity);
 
 	seedRNG (static_cast<uint64_t> (juce::Time::currentTimeMillis()));
 }
 
 void XjDitherProcessor::releaseResources()
 {
-	noiseL.clear();
-	noiseR.clear();
-	noiseL.shrink_to_fit();
-	noiseR.shrink_to_fit();
+	noise.clear();
+	noise.shrink_to_fit();
+}
+
+// Scale factor: 2^23 for 24-bit (signed range -2^23 to 2^23-1)
+inline double quantise24 (double sample) noexcept
+{
+	// Clamp to valid range first to avoid overflow on the floor()
+	sample = juce::jlimit (-1.0, 1.0, sample);
+
+	// Scale to integer domain, truncate, scale back
+	return std::floor (sample * kScale) * kInvScale;
 }
 
 //==============================================================================
@@ -45,37 +52,23 @@ void XjDitherProcessor::applyDither (juce::AudioBuffer<FloatType>& buffer)
 
 	// Safety: if the host sends a block larger than we prepared for,
 	// resize on the fly. This should never happen in normal operation.
-	if (numSamples > noiseL.size()) {
-		noiseL.resize (numSamples);
-		noiseR.resize (numSamples);
-	}
+	if (numSamples > noise.size())
+		noise.resize (numSamples);
 
-	if (numChannels == 2)
+	for (int ch = 0; ch < numChannels; ++ch)
 	{
-		// --- Stereo path ---
-		// Fill both noise buffers upfront so each loop below is a clean
-		// independent read+add+write — easier for the compiler to vectorise.
-		fillNoise (noiseL.data(), numSamples, 0);
-		fillNoise (noiseR.data(), numSamples, 1);
- 
-		FloatType* dataL = buffer.getWritePointer (0);
-		FloatType* dataR = buffer.getWritePointer (1);
- 
-		for (size_t i = 0; i < numSamples; ++i)
-			dataL[i] = static_cast<FloatType> (quantise24 (static_cast<double> (dataL[i]) + noiseL[i]));
- 
-		for (size_t i = 0; i < numSamples; ++i)
-			dataR[i] = static_cast<FloatType> (quantise24 (static_cast<double> (dataR[i]) + noiseR[i]));
-	} else {
-		// --- Mono path ---
-		fillNoise (noiseL.data(), numSamples, 0);
- 
-		FloatType* dataM = buffer.getWritePointer (0);
- 
-		for (size_t i = 0; i < numSamples; ++i)
-			dataM[i] = static_cast<FloatType> (quantise24 (static_cast<double> (dataM[i]) + noiseL[i]));
-	}
+		FloatType* data = buffer.getWritePointer(ch);
+		double* noisePtr = noise.data();
 
+		fillNoise(noisePtr, static_cast<int>(numSamples), ch);
+
+		// Tight, vectorizable loop
+		for (size_t i = 0; i < numSamples; ++i)
+		{
+			const double x = static_cast<double>(data[i]) + noisePtr[i];
+			data[i] = static_cast<FloatType>(quantise24(x));
+		}
+	}
 }
 
 void XjDitherProcessor::processBlock (juce::AudioBuffer<float>& buffer,
