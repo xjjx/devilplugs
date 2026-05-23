@@ -6,18 +6,18 @@ InputTransformerAudioProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    // Mode: 0=S, 1=A, 2=N
+    // Mode: 0=A, 1=S, 2=N
     layout.add(std::make_unique<juce::AudioParameterChoice>(
         "mode", "Mode",
         juce::StringArray { "A", "S", "N" }, 0));
 
     // Drive: how hard the signal hits the transformer core
-    // 0.0 = bypass, 1.0 = nominal, beyond that = saturation
+    // 0.0 = no effect, 1.0 = nominal, 2.0 = heavy saturation
     layout.add(std::make_unique<juce::AudioParameterFloat>(
         "drive", "Drive",
         juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f, 0.5f), 0.5f));
 
-    // Trim: output compensation (-6 to +6 dB)
+    // Trim: output level compensation (-6 to +6 dB)
     layout.add(std::make_unique<juce::AudioParameterFloat>(
         "trim", "Trim",
         juce::NormalisableRange<float>(-6.0f, 6.0f, 0.1f), 0.0f));
@@ -40,53 +40,36 @@ void InputTransformerAudioProcessor::prepareToPlay(double sr, int)
     sampleRate = sr;
     const double pi2 = juce::MathConstants<double>::twoPi;
 
-    // ── Mode A ───────────────────────────────────────────────────────────────
-    // HF 1-pole lowpass ~18kHz (gentle rolloff)
-    coeffs.mode_s_hf = std::exp(-pi2 * 18000.0 / sr);
-    // DC blocker ~5Hz
-    coeffs.mode_s_dc = std::exp(-pi2 * 5.0 / sr);
+    // ── Pre/de-emphasis shelf coefficients ───────────────────────────────────
+    // 1-pole LP coeff — higher freq = less LP = more HF emphasis
+    coeffs.a_pre = std::exp(-pi2 * 18000.0 / sr);  // Mode A: gentle ~18kHz
+    coeffs.s_pre = std::exp(-pi2 * 15000.0 / sr);  // Mode S: ~15kHz
+    coeffs.n_pre = std::exp(-pi2 * 10000.0 / sr);  // Mode N: deeper ~10kHz
 
-    // ── Mode S ───────────────────────────────────────────────────────────────
-    // HF 1-pole lowpass ~15kHz
-    coeffs.mode_a_hf = std::exp(-pi2 * 15000.0 / sr);
-    coeffs.mode_a_dc = std::exp(-pi2 * 5.0 / sr);
+    // ── DC blocker ~5Hz (shared) ──────────────────────────────────────────────
+    coeffs.dc = std::exp(-pi2 * 5.0 / sr);
 
-    // ── Mode N ───────────────────────────────────────────────────────────────
-    // 2-pole resonant LF bump ~60Hz, Q~1.8
-    // Using bilinear-transformed resonator
+    // ── Mode N: 2-pole resonant LF bump ~60Hz, Q=1.8, +3dB ──────────────────
     {
-        const double f0  = 60.0;
-        const double Q   = 1.8;
-        const double w0  = pi2 * f0 / sr;
-        const double cos0 = std::cos(w0);
-        const double sin0 = std::sin(w0);
-        const double alpha = sin0 / (2.0 * Q);
+        const double f0    = 60.0;
+        const double Q     = 1.8;
+        const double A     = std::pow(10.0, 3.0 / 40.0);  // +3dB peak gain
+        const double w0    = pi2 * f0 / sr;
+        const double cos0  = std::cos(w0);
+        const double alpha = std::sin(w0) / (2.0 * Q);
 
-        // Peaking EQ +3dB at f0 for the transformer bump character
-        const double A    = std::pow(10.0, 3.0 / 40.0); // +3dB
-        const double b0   =  1.0 + alpha * A;
-        const double b1   = -2.0 * cos0;
-        const double b2   =  1.0 - alpha * A;
-        const double a0   =  1.0 + alpha / A;
-        const double a1   = -2.0 * cos0;
-        const double a2   =  1.0 - alpha / A;
-
-        coeffs.mode_n_lf_b0 = b0 / a0;
-        coeffs.mode_n_lf_b1 = b1 / a0;
-        coeffs.mode_n_lf_b2 = b2 / a0;
-        coeffs.mode_n_lf_a1 = a1 / a0;
-        coeffs.mode_n_lf_a2 = a2 / a0;
+        const double a0    =  1.0 + alpha / A;
+        coeffs.n_lf_b0     = (1.0 + alpha * A) / a0;
+        coeffs.n_lf_b1     = (-2.0 * cos0)      / a0;
+        coeffs.n_lf_b2     = (1.0 - alpha * A)  / a0;
+        coeffs.n_lf_a1     = (-2.0 * cos0)      / a0;
+        coeffs.n_lf_a2     = (1.0 - alpha / A)  / a0;
     }
-    // HF 1-pole lowpass ~12kHz (Marinair bandwidth limit)
-    coeffs.mode_n_hf    = std::exp(-pi2 * 12000.0 / sr);
-    // Extra HF shelf cut at ~8kHz (additional darkness)
-    coeffs.mode_n_shelf = std::exp(-pi2 * 8000.0  / sr);
-    coeffs.mode_n_dc    = std::exp(-pi2 * 5.0 / sr);
 
     // ── Reset all state ───────────────────────────────────────────────────────
-    mode_s = SState{};
-    mode_a = AState{};
-    mode_n = NState{};
+    modeA = ModeAState{};
+    modeS = ModeSState{};
+    modeN = ModeNState{};
 }
 
 //==============================================================================
@@ -108,102 +91,106 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
 {
     juce::ScopedNoDenormals noDenormals;
 
-    const int numSamples  = buffer.getNumSamples();
-    const int numChannels = buffer.getNumChannels();
-    const bool mono       = (numChannels == 1);
+    const int  numSamples  = buffer.getNumSamples();
+    const int  numChannels = buffer.getNumChannels();
+    const bool mono        = (numChannels == 1);
 
     Sample* inL = buffer.getWritePointer(0);
     Sample* inR = mono ? nullptr : buffer.getWritePointer(1);
 
-    const int   mode  = static_cast<int>(*apvts.getRawParameterValue("mode"));
+    const int   mode       = static_cast<int>(*apvts.getRawParameterValue("mode"));
     const float driveParam = *apvts.getRawParameterValue("drive");
     const float trimParam  = *apvts.getRawParameterValue("trim");
 
-    // Drive maps 0..2 → internal drive 1.0..6.0 (exponential feel)
+    // Drive 0..2 -> internal sat drive 1..6 (exponential feel)
     const double drive = 1.0 + std::pow((double)driveParam / 2.0, 1.5) * 5.0;
-    const double trim  = std::pow(10.0, (double)trimParam / 20.0);
+
+    // Emphasis amount scales with drive param, not internal drive
+    // At driveParam=0: emphAmount=0 (pre/de cancel perfectly, no sat character)
+    // At driveParam=2: emphAmount=1 (strong HF emphasis into saturator)
+    const double emphBase = (double)driveParam / 2.0;
+
+    const double trim = std::pow(10.0, (double)trimParam / 20.0);
+
+    // Dry/wet: driveParam=0 -> fully dry passthrough
+    const double wet = juce::jlimit(0.0, 1.0, (double)driveParam);
+    const double dry = 1.0 - wet;
 
     for (int n = 0; n < numSamples; ++n)
     {
-        double L = static_cast<double>(*inL);
-        double R = mono ? 0.0 : static_cast<double>(*inR);
+        const double L = static_cast<double>(*inL);
+        const double R = mono ? 0.0 : static_cast<double>(*inR);
         double outL = L, outR = R;
-
-        // ── Blend amount: drive 0 = full dry, drive 1+ = increasing wet ──────
-        // At drive=0 (driveParam=0) we pass through cleanly
-        const double wet = juce::jlimit(0.0, 1.0, (double)driveParam);
-        const double dry = 1.0 - wet;
 
         switch (mode)
         {
-            // ── Mode A ───────────────────────────────────────────────────────
+            // ── Mode A: even harmonics, gentle ───────────────────────────────
             case 0:
             {
-                // 1. HF rolloff (pre-saturation, transformer bandwidth)
-                mode_s.hfL = mode_s.hfL + (1.0 - coeffs.mode_s_hf) * (L - mode_s.hfL);
-                mode_s.hfR = mode_s.hfR + (1.0 - coeffs.mode_s_hf) * (R - mode_s.hfR);
-                double fL = mode_s.hfL;
-                double fR = mode_s.hfR;
+                const double emph = emphBase * 0.4;  // subtle emphasis
 
-                // 2. Even-harmonic saturation (very subtle at low drive)
-                fL = sSat(fL, drive);
-                fR = sSat(fR, drive);
+                // Pre-emphasis (HF boost before sat)
+                double fL = preEmphasis(L, modeA.preL, coeffs.a_pre, emph);
+                double fR = preEmphasis(R, modeA.preR, coeffs.a_pre, emph);
 
-                // 3. DC block
-                outL = dcBlock(fL, mode_s.dcL, mode_s.dcHpL, coeffs.mode_s_dc);
-                outR = dcBlock(fR, mode_s.dcR, mode_s.dcHpR, coeffs.mode_s_dc);
+                // Saturation
+                fL = satModeA(fL, drive);
+                fR = satModeA(fR, drive);
+
+                // De-emphasis (restore flat response)
+                fL = deEmphasis(fL, modeA.deL, coeffs.a_pre, emph);
+                fR = deEmphasis(fR, modeA.deR, coeffs.a_pre, emph);
+
+                // DC block
+                outL = dcBlock(fL, modeA.dcL, modeA.dcHpL, coeffs.dc);
+                outR = dcBlock(fR, modeA.dcR, modeA.dcHpR, coeffs.dc);
                 break;
             }
 
-            // ── Mode S ───────────────────────────────────────────────────────
+            // ── Mode S: odd harmonics, punchy ────────────────────────────────
             case 1:
             {
-                // 1. HF rolloff (~15kHz, slightly darker than hardware)
-                mode_a.hfL = mode_a.hfL + (1.0 - coeffs.mode_a_hf) * (L - mode_a.hfL);
-                mode_a.hfR = mode_a.hfR + (1.0 - coeffs.mode_a_hf) * (R - mode_a.hfR);
-                double fL = mode_a.hfL;
-                double fR = mode_a.hfR;
+                const double emph = emphBase * 0.55; // moderate emphasis
 
-                // 2. Odd-harmonic saturation (forward, punchy)
-                fL = aSat(fL, drive);
-                fR = aSat(fR, drive);
+                double fL = preEmphasis(L, modeS.preL, coeffs.s_pre, emph);
+                double fR = preEmphasis(R, modeS.preR, coeffs.s_pre, emph);
 
-                // 3. DC block
-                outL = dcBlock(fL, mode_a.dcL, mode_a.dcHpL, coeffs.mode_a_dc);
-                outR = dcBlock(fR, mode_a.dcR, mode_a.dcHpR, coeffs.mode_a_dc);
+                fL = satModeS(fL, drive);
+                fR = satModeS(fR, drive);
+
+                fL = deEmphasis(fL, modeS.deL, coeffs.s_pre, emph);
+                fR = deEmphasis(fR, modeS.deR, coeffs.s_pre, emph);
+
+                outL = dcBlock(fL, modeS.dcL, modeS.dcHpL, coeffs.dc);
+                outR = dcBlock(fR, modeS.dcR, modeS.dcHpR, coeffs.dc);
                 break;
             }
 
-            // ── Mode N ───────────────────────────────────────────────────────
+            // ── Mode N: aggressive even harmonics + LF resonance ─────────────
             case 2:
             {
-                // Transposed Direct Form II biquad (stable)
-                auto biquadDF2 = [&](double x, double& s1, double& s2) -> double
-                {
-                    double y = coeffs.mode_n_lf_b0 * x + s1;
-                    s1 = coeffs.mode_n_lf_b1 * x - coeffs.mode_n_lf_a1 * y + s2;
-                    s2 = coeffs.mode_n_lf_b2 * x - coeffs.mode_n_lf_a2 * y;
-                    return y;
-                };
+                const double emph = emphBase * 0.7;  // strongest emphasis
 
-                double fL = biquadDF2(L, mode_n.lf1L, mode_n.lf2L);
-                double fR = biquadDF2(R, mode_n.lf1R, mode_n.lf2R);
+                // LF resonant bump (Marinair transformer core character)
+                double fL = biquadTDF2(L, modeN.lf1L, modeN.lf2L,
+                                       coeffs.n_lf_b0, coeffs.n_lf_b1, coeffs.n_lf_b2,
+                                       coeffs.n_lf_a1, coeffs.n_lf_a2);
+                double fR = biquadTDF2(R, modeN.lf1R, modeN.lf2R,
+                                       coeffs.n_lf_b0, coeffs.n_lf_b1, coeffs.n_lf_b2,
+                                       coeffs.n_lf_a1, coeffs.n_lf_a2);
 
-                // 2. HF rolloff — two stages for steeper Marinair rolloff
-                mode_n.hfL   = mode_n.hfL   + (1.0 - coeffs.mode_n_hf)    * (fL - mode_n.hfL);
-                mode_n.shelfL = mode_n.shelfL + (1.0 - coeffs.mode_n_shelf) * (mode_n.hfL - mode_n.shelfL);
-                mode_n.hfR   = mode_n.hfR   + (1.0 - coeffs.mode_n_hf)    * (fR - mode_n.hfR);
-                mode_n.shelfR = mode_n.shelfR + (1.0 - coeffs.mode_n_shelf) * (mode_n.hfR - mode_n.shelfR);
-                fL = mode_n.shelfL;
-                fR = mode_n.shelfR;
+                // Pre-emphasis (deeper shelf — more HF saturation)
+                fL = preEmphasis(fL, modeN.preL, coeffs.n_pre, emph);
+                fR = preEmphasis(fR, modeN.preR, coeffs.n_pre, emph);
 
-                // 3. Aggressive even-harmonic tanh saturation
-                fL = nSat(fL, drive);
-                fR = nSat(fR, drive);
+                fL = satModeN(fL, drive);
+                fR = satModeN(fR, drive);
 
-                // 4. DC block
-                outL = dcBlock(fL, mode_n.dcL, mode_n.dcHpL, coeffs.mode_n_dc);
-                outR = dcBlock(fR, mode_n.dcR, mode_n.dcHpR, coeffs.mode_n_dc);
+                fL = deEmphasis(fL, modeN.deL, coeffs.n_pre, emph);
+                fR = deEmphasis(fR, modeN.deR, coeffs.n_pre, emph);
+
+                outL = dcBlock(fL, modeN.dcL, modeN.dcHpL, coeffs.dc);
+                outR = dcBlock(fR, modeN.dcR, modeN.dcHpR, coeffs.dc);
                 break;
             }
 
