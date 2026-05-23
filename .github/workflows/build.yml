@@ -32,7 +32,7 @@ jobs:
 
     - name: Cache JUCE build objects
       id: cache-juce-linux
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           build/juce
@@ -75,7 +75,7 @@ jobs:
 
     - name: Cache JUCE build objects
       id: cache-juce-windows
-      uses: actions/cache@v6
+      uses: actions/cache@v5
       with:
         path: |
           build/juce
