@@ -173,8 +173,8 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
 
                 // Hysteresis — allpass phase smear, depth scaled by envelope
                 const double apC = coeffs.a_apBase + eMono * coeffs.a_apDepth;
-                fL = allpass1(fL, modeA.apL, apC);
-                fR = allpass1(fR, modeA.apR, apC);
+//                fL = allpass1(fL, modeA.apL, apC);
+//                fR = allpass1(fR, modeA.apR, apC);
 
                 // De-emphasis (same drifted coeff — cancels shelf exactly)
                 fL = deEmphasis(fL, modeA.preL, emph);
@@ -207,8 +207,8 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fR = satModeS(fR, eDrive);
 
                 const double apC = coeffs.s_apBase + eMono * coeffs.s_apDepth;
-                fL = allpass1(fL, modeS.apL, apC);
-                fR = allpass1(fR, modeS.apR, apC);
+//                fL = allpass1(fL, modeS.apL, apC);
+//                fR = allpass1(fR, modeS.apR, apC);
 
                 fL = deEmphasis(fL, modeS.preL, emph);
                 fR = deEmphasis(fR, modeS.preR, emph);
@@ -223,7 +223,7 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
             {
                 const double emph = emphBase * 0.7;
 
-                // #3 Thermal drift on pre-emphasis freq
+                // Thermal drift on pre-emphasis freq
                 const double dN   = thermalStep(driftN, coeffs.driftStep,
                                                 coeffs.driftSmooth, rnd);
                 const double preC = driftedCoeff(coeffs.n_pre, dN,
@@ -249,8 +249,8 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fR = satModeN(fR, eDrive);
 
                 const double apC = coeffs.n_apBase + eMono * coeffs.n_apDepth;
-                fL = allpass1(fL, modeN.apL, apC);
-                fR = allpass1(fR, modeN.apR, apC);
+//                fL = allpass1(fL, modeN.apL, apC);
+//                fR = allpass1(fR, modeN.apR, apC);
 
                 fL = deEmphasis(fL, modeN.preL, emph);
                 fR = deEmphasis(fR, modeN.preR, emph);
