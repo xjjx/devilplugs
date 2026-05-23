@@ -132,8 +132,6 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
     const double drive    = 1.0 + std::pow((double)driveParam / 2.0, 1.5) * 5.0;
     const double emphBase = (double)driveParam / 2.0;
     const double trim     = std::pow(10.0, (double)trimParam / 20.0);
-    const double wet      = juce::jlimit(0.0, 1.0, (double)driveParam);
-    const double dry      = 1.0 - wet;
 
     for (int n = 0; n < numSamples; ++n)
     {
@@ -271,9 +269,9 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 break;
         }
 
-        *inL++ = static_cast<Sample>((dry * L + wet * outL) * trim);
+        *inL++ = static_cast<Sample>(outL * trim);
         if (!mono)
-            *inR++ = static_cast<Sample>((dry * R + wet * outR) * trim);
+            *inR++ = static_cast<Sample>(outR * trim);
     }
 }
 
