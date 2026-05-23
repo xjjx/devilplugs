@@ -6,18 +6,14 @@ InputTransformerAudioProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    // Mode: 0=A, 1=S, 2=N
     layout.add(std::make_unique<juce::AudioParameterChoice>(
         "mode", "Mode",
         juce::StringArray { "A", "S", "N" }, 0));
 
-    // Drive: how hard the signal hits the transformer core
-    // 0.0 = no effect, 1.0 = nominal, 2.0 = heavy saturation
     layout.add(std::make_unique<juce::AudioParameterFloat>(
         "drive", "Drive",
         juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f, 0.5f), 0.5f));
 
-    // Trim: output level compensation (-6 to +6 dB)
     layout.add(std::make_unique<juce::AudioParameterFloat>(
         "trim", "Trim",
         juce::NormalisableRange<float>(-6.0f, 6.0f, 0.1f), 0.0f));
@@ -40,36 +36,66 @@ void InputTransformerAudioProcessor::prepareToPlay(double sr, int)
     sampleRate = sr;
     const double pi2 = juce::MathConstants<double>::twoPi;
 
-    // ── Pre/de-emphasis shelf coefficients ───────────────────────────────────
+    // ── Pre/de-emphasis nominal shelf coefficients ────────────────────────────
     // 1-pole LP coeff — higher freq = less LP = more HF emphasis
     coeffs.a_pre = std::exp(-pi2 * 18000.0 / sr);  // Mode A: gentle ~18kHz
     coeffs.s_pre = std::exp(-pi2 * 15000.0 / sr);  // Mode S: ~15kHz
     coeffs.n_pre = std::exp(-pi2 * 10000.0 / sr);  // Mode N: deeper ~10kHz
 
-    // ── DC blocker ~5Hz (shared) ──────────────────────────────────────────────
+    // ── DC blocker ~5Hz ───────────────────────────────────────────────────────
     coeffs.dc = std::exp(-pi2 * 5.0 / sr);
 
     // ── Mode N: 2-pole resonant LF bump ~60Hz, Q=1.8, +3dB ──────────────────
     {
         const double f0    = 60.0;
         const double Q     = 1.8;
-        const double A     = std::pow(10.0, 3.0 / 40.0);  // +3dB peak gain
+        const double A     = std::pow(10.0, 3.0 / 40.0);
         const double w0    = pi2 * f0 / sr;
         const double cos0  = std::cos(w0);
         const double alpha = std::sin(w0) / (2.0 * Q);
-
         const double a0    =  1.0 + alpha / A;
-        coeffs.n_lf_b0     = (1.0 + alpha * A) / a0;
-        coeffs.n_lf_b1     = (-2.0 * cos0)      / a0;
-        coeffs.n_lf_b2     = (1.0 - alpha * A)  / a0;
-        coeffs.n_lf_a1     = (-2.0 * cos0)      / a0;
-        coeffs.n_lf_a2     = (1.0 - alpha / A)  / a0;
+
+        coeffs.n_lf_b0 = (1.0 + alpha * A) / a0;
+        coeffs.n_lf_b1 = (-2.0 * cos0)     / a0;
+        coeffs.n_lf_b2 = (1.0 - alpha * A) / a0;
+        coeffs.n_lf_a1 = (-2.0 * cos0)     / a0;
+        coeffs.n_lf_a2 = (1.0 - alpha / A) / a0;
     }
 
+    // ── Hysteresis allpass coefficients ───────────────────────────────────
+    // Base coeff sets nominal phase frequency; depth scales with signal level.
+    // 1-pole allpass: coeff near 0 = phase shift ~fs/2; coeff near 1 = near DC.
+    // We target phase smearing around 2–4kHz at rest, drifting lower on peaks.
+    coeffs.a_apBase  = std::exp(-pi2 * 3000.0 / sr);  // Mode A: subtle
+    coeffs.a_apDepth = 0.06;                           // small level-dependent shift
+
+    coeffs.s_apBase  = std::exp(-pi2 * 2500.0 / sr);  // Mode S: moderate
+    coeffs.s_apDepth = 0.09;
+
+    coeffs.n_apBase  = std::exp(-pi2 * 1800.0 / sr);  // Mode N: strongest
+    coeffs.n_apDepth = 0.14;
+
+    // ── Thermal drift ─────────────────────────────────────────────────────
+    // Random walk runs at audio rate but is heavily smoothed (~2–5s time constant)
+    // Step size is tiny — the walk accumulates over thousands of samples
+    coeffs.driftStep   = 0.0003;                       // per-sample walk increment
+    coeffs.driftSmooth = std::exp(-1.0 / (sr * 3.0)); // ~3s smoothing
+    coeffs.driftRange  = 0.08;                         // ±8% frequency deviation
+
+    // ── Core IM release coefficients ──────────────────────────────────────
+    coeffs.a_coreRls = std::exp(-1.0 / (sr * 0.080)); // Mode A: ~80ms
+    coeffs.s_coreRls = std::exp(-1.0 / (sr * 0.120)); // Mode S: ~120ms
+    coeffs.n_coreRls = std::exp(-1.0 / (sr * 0.180)); // Mode N: ~180ms
+
     // ── Reset all state ───────────────────────────────────────────────────────
-    modeA = ModeAState{};
-    modeS = ModeSState{};
-    modeN = ModeNState{};
+    modeA      = ModeState{};
+    modeS      = ModeState{};
+    modeN      = ModeState{};
+    modeNExtra = ModeNExtra{};
+    driftA     = ThermalDrift{};
+    driftS     = ThermalDrift{};
+    driftN     = ThermalDrift{};
+    _lcg       = 0x12345678u;
 }
 
 //==============================================================================
@@ -103,18 +129,11 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
     const float trimParam  = *apvts.getRawParameterValue("trim");
 
     // Drive 0..2 -> internal sat drive 1..6 (exponential feel)
-    const double drive = 1.0 + std::pow((double)driveParam / 2.0, 1.5) * 5.0;
-
-    // Emphasis amount scales with drive param, not internal drive
-    // At driveParam=0: emphAmount=0 (pre/de cancel perfectly, no sat character)
-    // At driveParam=2: emphAmount=1 (strong HF emphasis into saturator)
+    const double drive    = 1.0 + std::pow((double)driveParam / 2.0, 1.5) * 5.0;
     const double emphBase = (double)driveParam / 2.0;
-
-    const double trim = std::pow(10.0, (double)trimParam / 20.0);
-
-    // Dry/wet: driveParam=0 -> fully dry passthrough
-    const double wet = juce::jlimit(0.0, 1.0, (double)driveParam);
-    const double dry = 1.0 - wet;
+    const double trim     = std::pow(10.0, (double)trimParam / 20.0);
+    const double wet      = juce::jlimit(0.0, 1.0, (double)driveParam);
+    const double dry      = 1.0 - wet;
 
     for (int n = 0; n < numSamples; ++n)
     {
@@ -122,26 +141,45 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
         const double R = mono ? 0.0 : static_cast<double>(*inR);
         double outL = L, outR = R;
 
+        // One LCG call per sample — shared across all movement effects
+        const double rnd = lcgRand();
+
         switch (mode)
         {
             // ── Mode A: even harmonics, gentle ───────────────────────────────
             case 0:
             {
-                const double emph = emphBase * 0.4;  // subtle emphasis
+                const double emph = emphBase * 0.4;
 
-                // Pre-emphasis (HF boost before sat)
-                double fL = preEmphasis(L, modeA.preL, coeffs.a_pre, emph);
-                double fR = preEmphasis(R, modeA.preR, coeffs.a_pre, emph);
+                // Thermal drift — wander the pre-emphasis frequency slowly
+                const double dA   = thermalStep(driftA, coeffs.driftStep,
+                                                coeffs.driftSmooth, rnd);
+                const double preC = driftedCoeff(coeffs.a_pre, dA,
+                                                 coeffs.driftRange, sampleRate);
+
+                // Pre-emphasis (drifted coeff)
+                double fL = preEmphasis(L, modeA.preL, preC, emph);
+                double fR = preEmphasis(R, modeA.preR, preC, emph);
+
+                // Core IM — envelope shifts drive point
+                const double eL    = coreEnvelope(fL, modeA.envL, coeffs.a_coreRls);
+                const double eR    = coreEnvelope(fR, modeA.envR, coeffs.a_coreRls);
+                const double eMono = (eL + eR) * 0.5;
+                const double eDrive = drive + eMono * 0.25; // sensitivity A
 
                 // Saturation
-                fL = satModeA(fL, drive);
-                fR = satModeA(fR, drive);
+                fL = satModeA(fL, eDrive);
+                fR = satModeA(fR, eDrive);
 
-                // De-emphasis (restore flat response)
-                fL = deEmphasis(fL, modeA.deL, coeffs.a_pre, emph);
-                fR = deEmphasis(fR, modeA.deR, coeffs.a_pre, emph);
+                // Hysteresis — allpass phase smear, depth scaled by envelope
+                const double apC = coeffs.a_apBase + eMono * coeffs.a_apDepth;
+                fL = allpass1(fL, modeA.apL, apC);
+                fR = allpass1(fR, modeA.apR, apC);
 
-                // DC block
+                // De-emphasis (same drifted coeff — cancels shelf exactly)
+                fL = deEmphasis(fL, modeA.deL, preC, emph);
+                fR = deEmphasis(fR, modeA.deR, preC, emph);
+
                 outL = dcBlock(fL, modeA.dcL, modeA.dcHpL, coeffs.dc);
                 outR = dcBlock(fR, modeA.dcR, modeA.dcHpR, coeffs.dc);
                 break;
@@ -150,16 +188,30 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
             // ── Mode S: odd harmonics, punchy ────────────────────────────────
             case 1:
             {
-                const double emph = emphBase * 0.55; // moderate emphasis
+                const double emph = emphBase * 0.55;
 
-                double fL = preEmphasis(L, modeS.preL, coeffs.s_pre, emph);
-                double fR = preEmphasis(R, modeS.preR, coeffs.s_pre, emph);
+                const double dS   = thermalStep(driftS, coeffs.driftStep,
+                                                coeffs.driftSmooth, rnd);
+                const double preC = driftedCoeff(coeffs.s_pre, dS,
+                                                 coeffs.driftRange, sampleRate);
 
-                fL = satModeS(fL, drive);
-                fR = satModeS(fR, drive);
+                double fL = preEmphasis(L, modeS.preL, preC, emph);
+                double fR = preEmphasis(R, modeS.preR, preC, emph);
 
-                fL = deEmphasis(fL, modeS.deL, coeffs.s_pre, emph);
-                fR = deEmphasis(fR, modeS.deR, coeffs.s_pre, emph);
+                const double eL    = coreEnvelope(fL, modeS.envL, coeffs.s_coreRls);
+                const double eR    = coreEnvelope(fR, modeS.envR, coeffs.s_coreRls);
+                const double eMono = (eL + eR) * 0.5;
+                const double eDrive = drive + eMono * 0.35; // sensitivity S
+
+                fL = satModeS(fL, eDrive);
+                fR = satModeS(fR, eDrive);
+
+                const double apC = coeffs.s_apBase + eMono * coeffs.s_apDepth;
+                fL = allpass1(fL, modeS.apL, apC);
+                fR = allpass1(fR, modeS.apR, apC);
+
+                fL = deEmphasis(fL, modeS.deL, preC, emph);
+                fR = deEmphasis(fR, modeS.deR, preC, emph);
 
                 outL = dcBlock(fL, modeS.dcL, modeS.dcHpL, coeffs.dc);
                 outR = dcBlock(fR, modeS.dcR, modeS.dcHpR, coeffs.dc);
@@ -169,25 +221,39 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
             // ── Mode N: aggressive even harmonics + LF resonance ─────────────
             case 2:
             {
-                const double emph = emphBase * 0.7;  // strongest emphasis
+                const double emph = emphBase * 0.7;
 
-                // LF resonant bump (Marinair transformer core character)
-                double fL = biquadTDF2(L, modeN.lf1L, modeN.lf2L,
+                // #3 Thermal drift on pre-emphasis freq
+                const double dN   = thermalStep(driftN, coeffs.driftStep,
+                                                coeffs.driftSmooth, rnd);
+                const double preC = driftedCoeff(coeffs.n_pre, dN,
+                                                 coeffs.driftRange, sampleRate);
+
+                // LF resonant bump — static (its own drift omitted for now)
+                double fL = biquadTDF2(L, modeNExtra.lf1L, modeNExtra.lf2L,
                                        coeffs.n_lf_b0, coeffs.n_lf_b1, coeffs.n_lf_b2,
                                        coeffs.n_lf_a1, coeffs.n_lf_a2);
-                double fR = biquadTDF2(R, modeN.lf1R, modeN.lf2R,
+                double fR = biquadTDF2(R, modeNExtra.lf1R, modeNExtra.lf2R,
                                        coeffs.n_lf_b0, coeffs.n_lf_b1, coeffs.n_lf_b2,
                                        coeffs.n_lf_a1, coeffs.n_lf_a2);
 
-                // Pre-emphasis (deeper shelf — more HF saturation)
-                fL = preEmphasis(fL, modeN.preL, coeffs.n_pre, emph);
-                fR = preEmphasis(fR, modeN.preR, coeffs.n_pre, emph);
+                fL = preEmphasis(fL, modeN.preL, preC, emph);
+                fR = preEmphasis(fR, modeN.preR, preC, emph);
 
-                fL = satModeN(fL, drive);
-                fR = satModeN(fR, drive);
+                const double eL    = coreEnvelope(fL, modeN.envL, coeffs.n_coreRls);
+                const double eR    = coreEnvelope(fR, modeN.envR, coeffs.n_coreRls);
+                const double eMono = (eL + eR) * 0.5;
+                const double eDrive = drive + eMono * 0.45; // sensitivity N
 
-                fL = deEmphasis(fL, modeN.deL, coeffs.n_pre, emph);
-                fR = deEmphasis(fR, modeN.deR, coeffs.n_pre, emph);
+                fL = satModeN(fL, eDrive);
+                fR = satModeN(fR, eDrive);
+
+                const double apC = coeffs.n_apBase + eMono * coeffs.n_apDepth;
+                fL = allpass1(fL, modeN.apL, apC);
+                fR = allpass1(fR, modeN.apR, apC);
+
+                fL = deEmphasis(fL, modeN.deL, preC, emph);
+                fR = deEmphasis(fR, modeN.deR, preC, emph);
 
                 outL = dcBlock(fL, modeN.dcL, modeN.dcHpL, coeffs.dc);
                 outR = dcBlock(fR, modeN.dcR, modeN.dcHpR, coeffs.dc);
@@ -200,7 +266,6 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 break;
         }
 
-        // Dry/wet blend + trim
         *inL++ = static_cast<Sample>((dry * L + wet * outL) * trim);
         if (!mono)
             *inR++ = static_cast<Sample>((dry * R + wet * outR) * trim);
