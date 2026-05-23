@@ -146,22 +146,23 @@ private:
         return std::exp(-pi2 * driftedFreq / sr);
     }
 
-    // Pre-emphasis: 1-pole high shelf boost
-    static forcedinline double preEmphasis(double x, double& s,
-                                           double coeff, double amount) noexcept
+    // Pre-emphasis returns the LP component as an output parameter
+    static forcedinline double preEmphasis(double x, double& lp,
+                                           double coeff, double amount,
+                                           double& lpOut) noexcept
     {
-        s        += (1.0 - coeff) * (x - s);
-        double hp = x - s;
-        return s + hp * (1.0 + amount);
+        lp    += (1.0 - coeff) * (x - lp);
+        lpOut  = lp;                        // capture LP at this exact moment
+        double hp = x - lp;
+        return lp + hp * (1.0 + amount);
     }
 
-    // De-emphasis: pass the saturated signal + the LP state from pre-emphasis
-    // We reconstruct HP from (x - lp) using the SAME lp state
-    static forcedinline double deEmphasis(double x, double lp, double amount) noexcept
+    // De-emphasis uses the captured LP — no integrator, no state dependency
+    static forcedinline double deEmphasis(double x, double lp,
+                                          double amount) noexcept
     {
-        // lp is the pre-emphasis integrator value — no & reference, read-only
-        double hp = x - lp;                // same split point as pre-emphasis
-        return lp + hp / (1.0 + amount);   // attenuate HF by exact inverse
+        double hp = x - lp;
+        return lp + hp / (1.0 + amount);
     }
 
     // Hysteresis — 1-pole allpass, coeff modulated by signal level
