@@ -67,6 +67,6 @@ function(xj_add_plugin TARGET PLUGIN_CODE LV2_SLUG SRC)
 endfunction()
 
 # ── Plugins ───────────────────────────────────────────────────────────────────
-xj_add_plugin(XjTF  XjTF xjtf src/XjTF/PluginProcessor.cpp CHOWDSP)
+#xj_add_plugin(XjTF  XjTF xjtf src/XjTF/PluginProcessor.cpp CHOWDSP)
 xj_add_plugin(XjTFL XTFL xjtfl src/XjTFL/PluginProcessor.cpp)
 xj_add_plugin(XjDither XjDi xjdither src/XjDither/PluginProcessor.cpp)
