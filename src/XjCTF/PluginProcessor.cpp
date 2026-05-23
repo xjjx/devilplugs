@@ -178,8 +178,8 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fR = satModeA(fR, eDrive);
 
                 // De-emphasis (same drifted coeff — cancels shelf exactly)
-                fL = deEmphasis(fL, hpBoostedL, emph);
-                fR = deEmphasis(fR, hpBoostedR, emph);
+                fL = deEmphasis(fL, hpBoostedL);
+                fR = deEmphasis(fR, hpBoostedR);
 
                 outL = dcBlock(fL, modeA.dcL, modeA.dcHpL, coeffs.dc);
                 outR = dcBlock(fR, modeA.dcR, modeA.dcHpR, coeffs.dc);
@@ -201,8 +201,8 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 double fR = allpass1(R, modeS.apR, apC);
 
                 double hpBoostedL, hpBoostedR;
-                fL = preEmphasis(fL, modeA.preL, preC, emph, hpBoostedL);
-                fR = preEmphasis(fR, modeA.preR, preC, emph, hpBoostedR);
+                fL = preEmphasis(fL, modeS.preL, preC, emph, hpBoostedL);
+                fR = preEmphasis(fR, modeS.preR, preC, emph, hpBoostedR);
 
                 const double eL    = coreEnvelope(fL, modeS.envL, coeffs.s_coreRls);
                 const double eR    = coreEnvelope(fR, modeS.envR, coeffs.s_coreRls);
@@ -213,8 +213,8 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fR = satModeS(fR, eDrive);
 
                 // De-emphasis (same drifted coeff — cancels shelf exactly)
-                fL = deEmphasis(fL, hpBoostedL, emph);
-                fR = deEmphasis(fR, hpBoostedR, emph);
+                fL = deEmphasis(fL, hpBoostedL);
+                fR = deEmphasis(fR, hpBoostedR);
 
                 outL = dcBlock(fL, modeS.dcL, modeS.dcHpL, coeffs.dc);
                 outR = dcBlock(fR, modeS.dcR, modeS.dcHpR, coeffs.dc);
@@ -245,8 +245,8 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fR = allpass1(fR, modeN.apR, apC);
 
                 double hpBoostedL, hpBoostedR;
-                fL = preEmphasis(fL, modeA.preL, preC, emph, hpBoostedL);
-                fR = preEmphasis(fR, modeA.preR, preC, emph, hpBoostedR);
+                fL = preEmphasis(fL, modeN.preL, preC, emph, hpBoostedL);
+                fR = preEmphasis(fR, modeN.preR, preC, emph, hpBoostedR);
 
                 const double eL    = coreEnvelope(fL, modeN.envL, coeffs.n_coreRls);
                 const double eR    = coreEnvelope(fR, modeN.envR, coeffs.n_coreRls);
@@ -257,8 +257,8 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fR = satModeN(fR, eDrive);
 
                 // De-emphasis (same drifted coeff — cancels shelf exactly)
-                fL = deEmphasis(fL, hpBoostedL, emph);
-                fR = deEmphasis(fR, hpBoostedR, emph);
+                fL = deEmphasis(fL, hpBoostedL);
+                fR = deEmphasis(fR, hpBoostedR);
 
                 outL = dcBlock(fL, modeN.dcL, modeN.dcHpL, coeffs.dc);
                 outR = dcBlock(fR, modeN.dcR, modeN.dcHpR, coeffs.dc);

@@ -156,12 +156,10 @@ private:
         return x + hpBoosted;             // lp + hp + hp*amount = x + hp*amount
     }
 
-    static forcedinline double deEmphasis(double x, double hpBoosted,
-                                          double amount) noexcept
+    static forcedinline double deEmphasis(double x, double hpBoosted) noexcept
     {
-        // Remove exactly what was added — regardless of what sat did to the rest
-        // The boosted part scales with amount: divide to get original hp, subtract excess
-        return x - hpBoosted + (hpBoosted / (1.0 + amount));
+        // remove exactly what was added, nothing more
+        return x - hpBoosted;
     }
 
     // Hysteresis — 1-pole allpass, coeff modulated by signal level
