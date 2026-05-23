@@ -156,9 +156,11 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                                                  coeffs.driftRange, sampleRate);
 
                 // Hysteresis — allpass phase smear, depth scaled by envelope
-                const double apC = coeffs.a_apBase;
-                double fL = allpass1(L, modeA.apL, apC);
-                double fR = allpass1(R, modeA.apR, apC);
+                double fL = L;
+                double fR = R;
+//                const double apC = coeffs.a_apBase;
+//                double fL = allpass1(L, modeA.apL, apC);
+//                double fR = allpass1(R, modeA.apR, apC);
 
                 // Pre-emphasis (drifted coeff)
                 double hpBoostedL, hpBoostedR;
@@ -194,9 +196,11 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 const double preC = driftedCoeff(coeffs.s_pre, dS,
                                                  coeffs.driftRange, sampleRate);
 
-                const double apC = coeffs.s_apBase;
-                double fL = allpass1(L, modeS.apL, apC);
-                double fR = allpass1(R, modeS.apR, apC);
+                double fL = L;
+                double fR = R;
+//                const double apC = coeffs.s_apBase;
+//                double fL = allpass1(L, modeS.apL, apC);
+//                double fR = allpass1(R, modeS.apR, apC);
 
                 double hpBoostedL, hpBoostedR;
                 fL = preEmphasis(fL, modeS.preL, preC, emph, hpBoostedL);
@@ -238,9 +242,9 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                                        coeffs.n_lf_b0, coeffs.n_lf_b1, coeffs.n_lf_b2,
                                        coeffs.n_lf_a1, coeffs.n_lf_a2);
 
-                const double apC = coeffs.n_apBase;
-                fL = allpass1(fL, modeN.apL, apC);
-                fR = allpass1(fR, modeN.apR, apC);
+//                const double apC = coeffs.n_apBase;
+//                fL = allpass1(fL, modeN.apL, apC);
+//                fR = allpass1(fR, modeN.apR, apC);
 
                 double hpBoostedL, hpBoostedR;
                 fL = preEmphasis(fL, modeN.preL, preC, emph, hpBoostedL);
