@@ -30,6 +30,17 @@ jobs:
     - name: Get JUCE commit hash
       run: echo "JUCE_HASH=$(git rev-parse HEAD:juce)" >> $GITHUB_ENV
 
+    - name: Cache JUCE build objects
+      id: cache-juce-linux
+      uses: actions/cache@v4
+      with:
+        path: |
+          build/juce
+          build/clap-juce-extensions
+        key: juce-linux-${{ env.JUCE_HASH }}
+        restore-keys: |
+          juce-linux-
+
     - name: Build
       run: |
         cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
@@ -61,6 +72,17 @@ jobs:
 
     - name: Get JUCE commit hash
       run: echo "JUCE_HASH=$(git rev-parse HEAD:juce)" >> $GITHUB_ENV
+
+    - name: Cache JUCE build objects
+      id: cache-juce-windows
+      uses: actions/cache@v6
+      with:
+        path: |
+          build/juce
+          build/clap-juce-extensions
+        key: juce-windows-${{ env.JUCE_HASH }}
+        restore-keys: |
+          juce-windows-
 
     - name: Build
       run: |
