@@ -146,23 +146,22 @@ private:
         return std::exp(-pi2 * driftedFreq / sr);
     }
 
-    // Pre-emphasis returns the LP component as an output parameter
     static forcedinline double preEmphasis(double x, double& lp,
                                            double coeff, double amount,
-                                           double& lpOut) noexcept
+                                           double& hpBoosted) noexcept
     {
-        lp    += (1.0 - coeff) * (x - lp);
-        lpOut  = lp;                        // capture LP at this exact moment
-        double hp = x - lp;
-        return lp + hp * (1.0 + amount);
+        lp += (1.0 - coeff) * (x - lp);
+        double hp  = x - lp;
+        hpBoosted  = hp * amount;         // store just the ADDED part
+        return x + hpBoosted;             // lp + hp + hp*amount = x + hp*amount
     }
 
-    // De-emphasis uses the captured LP — no integrator, no state dependency
-    static forcedinline double deEmphasis(double x, double lp,
+    static forcedinline double deEmphasis(double x, double hpBoosted,
                                           double amount) noexcept
     {
-        double hp = x - lp;
-        return lp + hp / (1.0 + amount);
+        // Remove exactly what was added — regardless of what sat did to the rest
+        // The boosted part scales with amount: divide to get original hp, subtract excess
+        return x - hpBoosted + (hpBoosted / (1.0 + amount));
     }
 
     // Hysteresis — 1-pole allpass, coeff modulated by signal level

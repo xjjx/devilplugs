@@ -163,9 +163,9 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 double fR = allpass1(R, modeA.apR, apC);
 
                 // Pre-emphasis (drifted coeff)
-                double lpL, lpR; // captured LP values
-                fL = preEmphasis(fL, modeA.preL, preC, emph, lpL);
-                fR = preEmphasis(fR, modeA.preR, preC, emph, lpR);
+                double hpBoostedL, hpBoostedR;
+                fL = preEmphasis(fL, modeA.preL, preC, emph, hpBoostedL);
+                fR = preEmphasis(fR, modeA.preR, preC, emph, hpBoostedR);
 
                 // Core IM — envelope shifts drive point
                 const double eL    = coreEnvelope(fL, modeA.envL, coeffs.a_coreRls);
@@ -178,8 +178,8 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fR = satModeA(fR, eDrive);
 
                 // De-emphasis (same drifted coeff — cancels shelf exactly)
-                fL = deEmphasis(fL, lpL, emph);
-                fR = deEmphasis(fR, lpR, emph);
+                fL = deEmphasis(fL, hpBoostedL, emph);
+                fR = deEmphasis(fR, hpBoostedR, emph);
 
                 outL = dcBlock(fL, modeA.dcL, modeA.dcHpL, coeffs.dc);
                 outR = dcBlock(fR, modeA.dcR, modeA.dcHpR, coeffs.dc);
@@ -200,9 +200,9 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 double fL = allpass1(L, modeS.apL, apC);
                 double fR = allpass1(R, modeS.apR, apC);
 
-                double lpL, lpR; // captured LP values
-                fL = preEmphasis(fL, modeS.preL, preC, emph, lpL);
-                fR = preEmphasis(fR, modeS.preR, preC, emph, lpR);
+                double hpBoostedL, hpBoostedR;
+                fL = preEmphasis(fL, modeA.preL, preC, emph, hpBoostedL);
+                fR = preEmphasis(fR, modeA.preR, preC, emph, hpBoostedR);
 
                 const double eL    = coreEnvelope(fL, modeS.envL, coeffs.s_coreRls);
                 const double eR    = coreEnvelope(fR, modeS.envR, coeffs.s_coreRls);
@@ -212,8 +212,9 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fL = satModeS(fL, eDrive);
                 fR = satModeS(fR, eDrive);
 
-                fL = deEmphasis(fL, lpL, emph);
-                fR = deEmphasis(fR, lpR, emph);
+                // De-emphasis (same drifted coeff — cancels shelf exactly)
+                fL = deEmphasis(fL, hpBoostedL, emph);
+                fR = deEmphasis(fR, hpBoostedR, emph);
 
                 outL = dcBlock(fL, modeS.dcL, modeS.dcHpL, coeffs.dc);
                 outR = dcBlock(fR, modeS.dcR, modeS.dcHpR, coeffs.dc);
@@ -243,9 +244,9 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fL = allpass1(fL, modeN.apL, apC);
                 fR = allpass1(fR, modeN.apR, apC);
 
-                double lpL, lpR; // captured LP values
-                fL = preEmphasis(fL, modeN.preL, preC, emph, lpL);
-                fR = preEmphasis(fR, modeN.preR, preC, emph, lpR);
+                double hpBoostedL, hpBoostedR;
+                fL = preEmphasis(fL, modeA.preL, preC, emph, hpBoostedL);
+                fR = preEmphasis(fR, modeA.preR, preC, emph, hpBoostedR);
 
                 const double eL    = coreEnvelope(fL, modeN.envL, coeffs.n_coreRls);
                 const double eR    = coreEnvelope(fR, modeN.envR, coeffs.n_coreRls);
@@ -255,8 +256,9 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fL = satModeN(fL, eDrive);
                 fR = satModeN(fR, eDrive);
 
-                fL = deEmphasis(fL, lpL, emph);
-                fR = deEmphasis(fR, lpR, emph);
+                // De-emphasis (same drifted coeff — cancels shelf exactly)
+                fL = deEmphasis(fL, hpBoostedL, emph);
+                fR = deEmphasis(fR, hpBoostedR, emph);
 
                 outL = dcBlock(fL, modeN.dcL, modeN.dcHpL, coeffs.dc);
                 outR = dcBlock(fR, modeN.dcR, modeN.dcHpR, coeffs.dc);
