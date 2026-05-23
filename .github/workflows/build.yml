@@ -52,6 +52,7 @@ jobs:
         mv build/*_artefacts/Release/VST/*.so release/
         mv build/*_artefacts/Release/LV2/*.lv2 release/
         mv build/*_artefacts/Release/VST3/*.vst3 release/
+        mv build/*_artefacts/Release/CLAP/*.clap release/
 
     - name: Upload
       uses: actions/upload-artifact@v6
@@ -96,6 +97,7 @@ jobs:
         Move-Item build\*_artefacts\Release\VST\*.dll  release\
         Move-Item build\*_artefacts\Release\VST3\*.vst3 release\
         Move-Item build\*_artefacts\Release\LV2\*.lv2  release\
+        Move-Item build\*_artefacts\Release\CLAP\*.clap  release\
 
     - name: Upload
       uses: actions/upload-artifact@v6
