@@ -177,8 +177,8 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fR = allpass1(fR, modeA.apR, apC);
 
                 // De-emphasis (same drifted coeff — cancels shelf exactly)
-                fL = deEmphasis(fL, modeA.deL, preC, emph);
-                fR = deEmphasis(fR, modeA.deR, preC, emph);
+                fL = deEmphasis(fL, modeA.preL, emph);
+                fR = deEmphasis(fR, modeA.preR, emph);
 
                 outL = dcBlock(fL, modeA.dcL, modeA.dcHpL, coeffs.dc);
                 outR = dcBlock(fR, modeA.dcR, modeA.dcHpR, coeffs.dc);
@@ -210,8 +210,8 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fL = allpass1(fL, modeS.apL, apC);
                 fR = allpass1(fR, modeS.apR, apC);
 
-                fL = deEmphasis(fL, modeS.deL, preC, emph);
-                fR = deEmphasis(fR, modeS.deR, preC, emph);
+                fL = deEmphasis(fL, modeS.preL, emph);
+                fR = deEmphasis(fR, modeS.preR, emph);
 
                 outL = dcBlock(fL, modeS.dcL, modeS.dcHpL, coeffs.dc);
                 outR = dcBlock(fR, modeS.dcR, modeS.dcHpR, coeffs.dc);
@@ -252,8 +252,8 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 fL = allpass1(fL, modeN.apL, apC);
                 fR = allpass1(fR, modeN.apR, apC);
 
-                fL = deEmphasis(fL, modeN.deL, preC, emph);
-                fR = deEmphasis(fR, modeN.deR, preC, emph);
+                fL = deEmphasis(fL, modeN.preL, emph);
+                fR = deEmphasis(fR, modeN.preR, emph);
 
                 outL = dcBlock(fL, modeN.dcL, modeN.dcHpL, coeffs.dc);
                 outR = dcBlock(fR, modeN.dcR, modeN.dcHpR, coeffs.dc);

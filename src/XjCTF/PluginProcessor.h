@@ -61,7 +61,6 @@ private:
     {
         // Pre/de-emphasis LP integrators
         double preL = 0.0, preR = 0.0;
-        double deL  = 0.0, deR  = 0.0;
 
         // Hysteresis — 1-pole allpass state
         double apL  = 0.0, apR  = 0.0;
@@ -156,13 +155,13 @@ private:
         return s + hp * (1.0 + amount);
     }
 
-    // De-emphasis: exact inverse — restores flat response
-    static forcedinline double deEmphasis(double x, double& s,
-                                          double coeff, double amount) noexcept
+    // De-emphasis: pass the saturated signal + the LP state from pre-emphasis
+    // We reconstruct HP from (x - lp) using the SAME lp state
+    static forcedinline double deEmphasis(double x, double lp, double amount) noexcept
     {
-        s        += (1.0 - coeff) * (x - s);
-        double hp = x - s;
-        return s + hp / (1.0 + amount);
+        // lp is the pre-emphasis integrator value — no & reference, read-only
+        double hp = x - lp;                // same split point as pre-emphasis
+        return lp + hp / (1.0 + amount);   // attenuate HF by exact inverse
     }
 
     // Hysteresis — 1-pole allpass, coeff modulated by signal level
