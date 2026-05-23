@@ -157,9 +157,14 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 const double preC = driftedCoeff(coeffs.a_pre, dA,
                                                  coeffs.driftRange, sampleRate);
 
+                // Hysteresis — allpass phase smear, depth scaled by envelope
+                const double apC = coeffs.a_apBase;
+                double fL = allpass1(L, modeA.apL, apC);
+                double fR = allpass1(R, modeA.apR, apC);
+
                 // Pre-emphasis (drifted coeff)
-                double fL = preEmphasis(L, modeA.preL, preC, emph);
-                double fR = preEmphasis(R, modeA.preR, preC, emph);
+                fL = preEmphasis(fL, modeA.preL, preC, emph);
+                fR = preEmphasis(fR, modeA.preR, preC, emph);
 
                 // Core IM — envelope shifts drive point
                 const double eL    = coreEnvelope(fL, modeA.envL, coeffs.a_coreRls);
@@ -170,11 +175,6 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 // Saturation
                 fL = satModeA(fL, eDrive);
                 fR = satModeA(fR, eDrive);
-
-                // Hysteresis — allpass phase smear, depth scaled by envelope
-                const double apC = coeffs.a_apBase + eMono * coeffs.a_apDepth;
-                fL = allpass1(fL, modeA.apL, apC);
-                fR = allpass1(fR, modeA.apR, apC);
 
                 // De-emphasis (same drifted coeff — cancels shelf exactly)
                 fL = deEmphasis(fL, modeA.preL, emph);
@@ -195,8 +195,12 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                 const double preC = driftedCoeff(coeffs.s_pre, dS,
                                                  coeffs.driftRange, sampleRate);
 
-                double fL = preEmphasis(L, modeS.preL, preC, emph);
-                double fR = preEmphasis(R, modeS.preR, preC, emph);
+                const double apC = coeffs.s_apBase;
+                double fL = allpass1(L, modeS.apL, apC);
+                double fR = allpass1(R, modeS.apR, apC);
+
+                fL = preEmphasis(fL, modeS.preL, preC, emph);
+                fR = preEmphasis(fR, modeS.preR, preC, emph);
 
                 const double eL    = coreEnvelope(fL, modeS.envL, coeffs.s_coreRls);
                 const double eR    = coreEnvelope(fR, modeS.envR, coeffs.s_coreRls);
@@ -205,10 +209,6 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
 
                 fL = satModeS(fL, eDrive);
                 fR = satModeS(fR, eDrive);
-
-                const double apC = coeffs.s_apBase + eMono * coeffs.s_apDepth;
-                fL = allpass1(fL, modeS.apL, apC);
-                fR = allpass1(fR, modeS.apR, apC);
 
                 fL = deEmphasis(fL, modeS.preL, emph);
                 fR = deEmphasis(fR, modeS.preR, emph);
@@ -223,7 +223,7 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
             {
                 const double emph = emphBase * 0.7;
 
-                // #3 Thermal drift on pre-emphasis freq
+                // Thermal drift on pre-emphasis freq
                 const double dN   = thermalStep(driftN, coeffs.driftStep,
                                                 coeffs.driftSmooth, rnd);
                 const double preC = driftedCoeff(coeffs.n_pre, dN,
@@ -237,6 +237,10 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
                                        coeffs.n_lf_b0, coeffs.n_lf_b1, coeffs.n_lf_b2,
                                        coeffs.n_lf_a1, coeffs.n_lf_a2);
 
+                const double apC = coeffs.n_apBase;
+                fL = allpass1(fL, modeN.apL, apC);
+                fR = allpass1(fR, modeN.apR, apC);
+
                 fL = preEmphasis(fL, modeN.preL, preC, emph);
                 fR = preEmphasis(fR, modeN.preR, preC, emph);
 
@@ -247,10 +251,6 @@ void InputTransformerAudioProcessor::processImpl(juce::AudioBuffer<Sample>& buff
 
                 fL = satModeN(fL, eDrive);
                 fR = satModeN(fR, eDrive);
-
-                const double apC = coeffs.n_apBase + eMono * coeffs.n_apDepth;
-                fL = allpass1(fL, modeN.apL, apC);
-                fR = allpass1(fR, modeN.apR, apC);
 
                 fL = deEmphasis(fL, modeN.preL, emph);
                 fR = deEmphasis(fR, modeN.preR, emph);
