@@ -166,8 +166,8 @@ private:
     // coeff near 0 = near flat phase; coeff near 1 = heavy phase shift at LF
     static forcedinline double allpass1(double x, double& s, double coeff) noexcept
     {
-        double y = coeff * (x - s) + s;  // 1-pole allpass
-        s = y;
+        double y = -coeff * x + s;        // allpass output
+        s = x + coeff * y;                // correct state update
         return y;
     }
 
