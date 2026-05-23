@@ -7,3 +7,7 @@
 [submodule "chowdsp_wdf"]
 	path = chowdsp_wdf
 	url = https://github.com/Chowdhury-DSP/chowdsp_wdf.git
+[submodule "clap-juce-extensions"]
+	path = clap-juce-extensions
+	url = https://github.com/free-audio/clap-juce-extensions.git
+	branch = main

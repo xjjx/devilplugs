@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_subdirectory(juce)
 add_subdirectory(chowdsp_wdf)
+add_subdirectory(clap-juce-extensions EXCLUDE_FROM_ALL)
 
 set(JUCE_VST3_SDK_PATH "${CMAKE_CURRENT_SOURCE_DIR}/vst3sdk")
 juce_set_vst2_sdk_path("${CMAKE_CURRENT_SOURCE_DIR}/VST_SDK_2.4")
@@ -28,6 +29,11 @@ function(xj_add_plugin TARGET PLUGIN_CODE LV2_SLUG SRC)
         EDITOR_WANTS_KEYBOARD_FOCUS FALSE
         VST3_SDK_PATH               "${JUCE_VST3_SDK_PATH}"
         LV2URI                      "urn:xjdevilplugs:${LV2_SLUG}"
+    )
+
+    clap_juce_extensions_plugin(TARGET ${TARGET}
+        CLAP_ID "xj.devilplugs.${LV2_SLUG}"
+        CLAP_FEATURES audio-effect
     )
 
     target_sources(${TARGET} PRIVATE ${SRC})
@@ -69,5 +75,5 @@ endfunction()
 # ── Plugins ───────────────────────────────────────────────────────────────────
 #xj_add_plugin(XjTF  XjTF xjtf src/XjTF/PluginProcessor.cpp CHOWDSP)
 xj_add_plugin(XjTFL XTFL xjtfl src/XjTFL/PluginProcessor.cpp)
-xj_add_plugin(XjCTF XTFL xjctf src/XjCTF/PluginProcessor.cpp)
+xj_add_plugin(XjCTF XCTF xjctf src/XjCTF/PluginProcessor.cpp)
 xj_add_plugin(XjDither XjDi xjdither src/XjDither/PluginProcessor.cpp)
