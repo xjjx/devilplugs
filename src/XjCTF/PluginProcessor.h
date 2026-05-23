@@ -20,7 +20,7 @@ public:
 
     //==============================================================================
     juce::AudioProcessorEditor* createEditor() override;
-    bool hasEditor() const override { return true; }
+    bool hasEditor() const override { return false; }
     const juce::String getName() const override { return "InputTransformer"; }
     bool acceptsMidi()  const override { return false; }
     bool producesMidi() const override { return false; }
