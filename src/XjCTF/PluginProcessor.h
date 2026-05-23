@@ -171,29 +171,27 @@ private:
         return y;
     }
 
-    // Mode A saturation: soft even-harmonic, nearly transparent
-    static forcedinline double satModeA(double x, double drive) noexcept
-    {
-        double d = x * drive;
-        double y = d - (d * d * d) * 0.04 + (d * d) * 0.008;
-        return y / drive;
-    }
-
-    // Mode S saturation: odd-harmonic, forward/punchy
-    static forcedinline double satModeS(double x, double drive) noexcept
-    {
-        double d    = x * drive;
-        double sign = d >= 0.0 ? 1.0 : -1.0;
-        double y    = sign * (1.0 - std::exp(-std::abs(d) * 2.5)) / 2.5;
-        return y / drive;
-    }
-
-    // Mode N saturation: aggressive tanh + slight 2nd harmonic asymmetry
+    // Mode A balanced even+odd, punchy
     static forcedinline double satModeN(double x, double drive) noexcept
     {
         double d = x * drive;
-        double y = std::tanh(d * 1.6) / 1.6;
-        y       += d * d * 0.018;
+        double y = std::tanh(d + 0.10 * d * d);  // moderate even+odd
+        return y / drive;
+    }
+
+    // Mode S mostly odd, subtle even
+    static forcedinline double satModeS(double x, double drive) noexcept
+    {
+        double d = x * drive;
+        double y = std::tanh(d + 0.03 * d * d);  // very small even component
+        return y / drive;
+    }
+
+    // Mode N strong even — 2nd harmonic dominant
+    static forcedinline double satModeA(double x, double drive) noexcept
+    {
+        double d = x * drive;
+        double y = std::tanh(d + 0.18 * d * d);  // strong even+odd
         return y / drive;
     }
 
