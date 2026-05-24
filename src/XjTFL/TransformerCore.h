@@ -57,7 +57,7 @@ public:
     double processSample(double x, int ch)
     {
         // ── Stage 1: input highpass ───────────────────────────────────────
-        double in = static_cast<double>(dcBlocker.processSample(ch, static_cast<float>(x)));
+        double in = dcBlocker.processSample(ch, x);
 
         // ── Stage 2: transformer core model ──────────────────────────────
 
@@ -96,7 +96,7 @@ public:
         double y = phi * driveNorm;
 
         // ── Stage 3: iron smoothing lowpass ───────────────────────────────
-        y = static_cast<double>(ironFilter.processSample(ch, static_cast<float>(y)));
+        y = ironFilter.processSample(ch, y);
 
         return y;
     }
@@ -127,9 +127,9 @@ private:
     double eddy              = 0.005; // eddy current damping — very subtle
     double barkhausenAmount  = 0.0005;// domain noise — barely audible, just adds life
 
-    juce::dsp::StateVariableTPTFilter<float> dcBlocker;  // stage 1
+    juce::dsp::StateVariableTPTFilter<double> dcBlocker;  // stage 1
     // (stage 2 is the inline core model above)
-    juce::dsp::StateVariableTPTFilter<float> ironFilter; // stage 3
+    juce::dsp::StateVariableTPTFilter<double> ironFilter; // stage 3
 
     std::mt19937 rng;
     std::uniform_real_distribution<double> dist{ -1.0, 1.0 };
