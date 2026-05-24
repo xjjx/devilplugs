@@ -172,7 +172,7 @@ private:
     }
 
     // Mode A balanced even+odd, punchy
-    static forcedinline double satModeN(double x, double drive) noexcept
+    static forcedinline double satModeA(double x, double drive) noexcept
     {
         double d = x * drive;
         double y = std::tanh(d + 0.10 * d * d);  // moderate even+odd
@@ -188,7 +188,7 @@ private:
     }
 
     // Mode N strong even — 2nd harmonic dominant
-    static forcedinline double satModeA(double x, double drive) noexcept
+    static forcedinline double satModeN(double x, double drive) noexcept
     {
         double d = x * drive;
         double y = std::tanh(d + 0.18 * d * d);  // strong even+odd
