@@ -154,6 +154,11 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     // Downsample
     oversampling->processSamplesDown (block);
 
+    // Convert back to Sample
+    for (int ch = 0; ch < numChannels; ++ch)
+        for (int i = 0; i < numSamples; ++i)
+            buffer.setSample (ch, i, static_cast<Sample> (doubleBuffer.getSample (ch, i)));
+
     buffer.applyGain (outputGain);
 }
 
