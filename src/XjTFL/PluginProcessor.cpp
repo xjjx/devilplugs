@@ -85,7 +85,7 @@ void XjTFProcessor::prepareDSP (double sampleRate)
     transformer.prepare (effectiveSampleRate, static_cast<size_t>(getTotalNumOutputChannels()));
 
     // unity (drive=1.0) at param=30
-    auto driveParam  = apvts.getRawParameterValue (DRIVE_ID);
+    auto driveParam = apvts.getRawParameterValue (DRIVE_ID);
     const float drive = driveParam->load();
 
     float driveInternal;
@@ -124,7 +124,8 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
 {
     juce::ScopedNoDenormals noDenormals;
 
-    const float outputDb  = apvts.getParameter(OUTPUT_ID)->getValue();
+	auto outputParam = apvts.getRawParameterValue (OUTPUT_ID);
+    const float outputDb = outputParam->load();
     const double outputGain = juce::Decibels::decibelsToGain (outputDb);
 
     if (needPrepare.exchange (false))
