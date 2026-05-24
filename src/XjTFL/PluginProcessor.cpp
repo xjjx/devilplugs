@@ -142,13 +142,14 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
 
     // Upsample
     auto osBlock = oversampling->processSamplesUp (block);
+    int osSamples = osBlock.getNumSamples();
 
     for (int ch = 0; ch < numChannels; ++ch)
     {
         auto* data = osBlock.getChannelPointer (static_cast<size_t>(ch));
 
-        for (int i = 0; i < numSamples; ++i)
-            data[i] = static_cast<Sample>(transformer.processSample(data[i], ch));
+        for (int i = 0; i < osSamples; ++i)
+            data[i] = transformer.processSample (data[i], ch);
     }
 
     // Downsample
@@ -156,7 +157,7 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
 
     // Convert back to Sample
     for (int ch = 0; ch < numChannels; ++ch)
-        for (int i = 0; i < numSamples; ++i)
+        for (int i = 0; i < osSamples; ++i)
             buffer.setSample (ch, i, static_cast<Sample> (doubleBuffer.getSample (ch, i)));
 
     buffer.applyGain (outputGain);
