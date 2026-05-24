@@ -12,8 +12,8 @@ public:
         sr           = sampleRate;
         numCh        = numChannels;
 
-        flux.assign   (numChannels, 0.0f);
-        prevMag.assign(numChannels, 0.0f);
+        flux.assign   (numChannels, 0.0);
+        prevMag.assign(numChannels, 0.0);
 
         juce::dsp::ProcessSpec spec;
         spec.sampleRate       = sampleRate;
@@ -46,32 +46,32 @@ public:
 
     void setDrive(float d)
     {
-        drive = d;
+        drive = static_cast<double>(d);
         // When drive > 1.0, phi steady state → tanh(drive * in) which is louder.
         // Dividing by drive compensates — at drive=1.0 no change, at drive=2.0 -6dB correction.
         // Use actual drive value, not tanh(drive), because tanh asymptotes to 1.0
         // and stops compensating at high drive where you actually need it most.
-        driveNorm = 1.0f / std::max(drive, 0.001f);
+        driveNorm = 1.0 / std::max(drive, 0.001);
     }
 
-    float processSample(float x, int ch)
+    double processSample(double x, int ch)
     {
         // ── Stage 1: input highpass ───────────────────────────────────────
-        float in = dcBlocker.processSample(ch, x);
+        double in = static_cast<double>(dcBlocker.processSample(ch, static_cast<float>(x)));
 
         // ── Stage 2: transformer core model ──────────────────────────────
 
-        float& phi  = flux[static_cast<size_t>(ch)];
-        float& mPrev = prevMag[static_cast<size_t>(ch)];
+        double& phi   = flux[static_cast<size_t>(ch)];
+        double& mPrev = prevMag[static_cast<size_t>(ch)];
 
         // Drive input into magnetic field H
-        float H = drive * in;
+        double H = drive * in;
 
         // Hysteresis: magnetization M depends on H and previous state.
         // mPrev feedback models magnetic memory (remanence).
         // Kept small so it adds character without LPF — pure saturation shape.
-//        float M = fastTanh(H + hysteresis * mPrev);
-        float M = std::tanh(H + hysteresis * mPrev);
+//        double M = fastTanh(H + hysteresis * mPrev);
+        double M = std::tanh(H + hysteresis * mPrev);
 
         // Flux integrator: phi tracks M with a one-pole lag.
         // fluxRate = 1.0 means phi = M instantly (no extra LPF).
@@ -81,11 +81,11 @@ public:
 
         // Eddy current loss: damps rapid flux changes (subtle HF softening)
         // Very small value — just enough for physical realism
-        float prevPhi = phi; // store before noise
+        double prevPhi = phi; // store before noise
         phi -= eddy * (phi - mPrev);
 
         // Barkhausen noise: tiny random jumps from magnetic domain switching
-        float dFlux = phi - prevPhi;
+        double dFlux = phi - prevPhi;
         phi += barkhausenAmount * randomNoise() * std::abs(dFlux);
 
         // Store previous magnetization for next sample's hysteresis
@@ -93,22 +93,22 @@ public:
 
         // Core output is phi — at steady state phi ≈ tanh(drive * in)
         // No gain compensation needed when fluxRate = 1.0
-        float y = phi * driveNorm;
+        double y = phi * driveNorm;
 
         // ── Stage 3: iron smoothing lowpass ───────────────────────────────
-        y = ironFilter.processSample(ch, y);
+        y = static_cast<double>(ironFilter.processSample(ch, static_cast<float>(y)));
 
         return y;
     }
 
 private:
-    inline float fastTanh(float x)
+    inline double fastTanh(double x)
     {
-        float x2 = x * x;
-        return x * (27.0f + x2) / (27.0f + 9.0f * x2);
+        double x2 = x * x;
+        return x * (27.0 + x2) / (27.0 + 9.0 * x2);
     }
 
-    inline float randomNoise()
+    inline double randomNoise()
     {
         return dist(rng);
     }
@@ -116,21 +116,21 @@ private:
     double sr    = 44100.0;
     size_t numCh = 2;
 
-    std::vector<float> flux;    // magnetic flux state per channel
-    std::vector<float> prevMag; // previous magnetization per channel
+    std::vector<double> flux;    // magnetic flux state per channel
+    std::vector<double> prevMag; // previous magnetization per channel
 
-    // Core model parameters
-    float drive    = 1.0f;  // set via setDrive() — see exponential scaling in processor
-    float driveNorm = 1.0f; // precomputed in setDrive()
-    float hysteresis = 0.1f; // magnetic memory — keep low (0.05–0.15) to avoid LPF
-    float fluxRate   = 1.0f; // 1.0 = no integrator lag; lower = more "iron slowness"
-    float eddy       = 0.005f; // eddy current damping — very subtle
-    float barkhausenAmount = 0.0005f; // domain noise — barely audible, just adds life
+    // Core model parameters — double for audio path consistency
+    double drive             = 1.0;   // set via setDrive() — see exponential scaling in processor
+    double driveNorm         = 1.0;   // precomputed in setDrive()
+    double hysteresis        = 0.1;   // magnetic memory — keep low (0.05–0.15) to avoid LPF
+    double fluxRate          = 1.0;   // 1.0 = no integrator lag; lower = more "iron slowness"
+    double eddy              = 0.005; // eddy current damping — very subtle
+    double barkhausenAmount  = 0.0005;// domain noise — barely audible, just adds life
 
     juce::dsp::StateVariableTPTFilter<float> dcBlocker;  // stage 1
     // (stage 2 is the inline core model above)
     juce::dsp::StateVariableTPTFilter<float> ironFilter; // stage 3
 
     std::mt19937 rng;
-    std::uniform_real_distribution<float> dist{ -1.0f, 1.0f };
+    std::uniform_real_distribution<double> dist{ -1.0, 1.0 };
 };
