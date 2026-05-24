@@ -58,7 +58,7 @@ private:
 
     template <typename Sample>
     void processImpl (juce::AudioBuffer<Sample>& buffer);
-    void prepareDSP ();
+    void prepareDSP (double sampleRate);
 
     // DSP
     std::unique_ptr<juce::dsp::Oversampling<double>> oversampling;

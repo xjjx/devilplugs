@@ -65,7 +65,7 @@ void XjTFProcessor::parameterChanged (const juce::String& paramID, float)
 }
 
 //==============================================================================
-void XjTFProcessor::prepareDSP ()
+void XjTFProcessor::prepareDSP (double sampleRate)
 {
     // Oversampling: rebuild with correct factor
     // 0=1x, 1=2x, 2=4x | 2^order: 2^0=1, 2^1=2, 2^2=4
@@ -79,6 +79,10 @@ void XjTFProcessor::prepareDSP ()
         true);
 
     oversampling->initProcessing(static_cast<size_t>(getBlockSize()));
+
+    // Recalculate effective sample rate for transformer
+    double effectiveSampleRate = sampleRate * oversampling->getOversamplingFactor();
+    transformer.prepare (effectiveSampleRate, static_cast<size_t>(getTotalNumOutputChannels()));
 
     // unity (drive=1.0) at param=30
     const float drive = apvts.getParameter(DRIVE_ID)->getValue();
@@ -104,8 +108,7 @@ void XjTFProcessor::prepareDSP ()
 //==============================================================================
 void XjTFProcessor::prepareToPlay (double sampleRate, int /* samplesPerBlock */)
 {
-	transformer.prepare(sampleRate, static_cast<size_t>(getTotalNumOutputChannels()));
-    prepareDSP ();
+    prepareDSP (sampleRate);
 }
 
 void XjTFProcessor::releaseResources()
@@ -124,7 +127,7 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
     const double outputGain = juce::Decibels::decibelsToGain (outputDb);
 
     if (needPrepare.exchange (false))
-        prepareDSP ();
+        prepareDSP (getSampleRate());
 
    if (oversampling == nullptr)
         return;
