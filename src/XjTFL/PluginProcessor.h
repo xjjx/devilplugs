@@ -61,7 +61,7 @@ private:
     void prepareDSP ();
 
     // DSP
-    juce::dsp::Oversampling<double> oversampling;
+    std::unique_ptr<juce::dsp::Oversampling<double>> oversampling;
 
     TransformerCore transformer;
 
