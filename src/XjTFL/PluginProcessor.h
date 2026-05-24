@@ -65,9 +65,6 @@ private:
 
     TransformerCore transformer;
 
-    // Parameter pointers (grabbed once in prepareToPlay)
-    std::atomic<float>* driveParam   = nullptr;
-    std::atomic<float>* outputParam  = nullptr;
     std::atomic<bool> needPrepare { true };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (XjTFProcessor)

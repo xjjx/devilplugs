@@ -4,6 +4,7 @@
 // Parameter IDs
 static const juce::String DRIVE_ID     = "drive";
 static const juce::String OUTPUT_ID    = "output";
+static const juce::String IRON_LP_ID   = "ironLP";
 
 //==============================================================================
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -23,6 +24,11 @@ XjTFProcessor::createParameterLayout()
         juce::NormalisableRange<float> (-12.f, 12.f, 0.1f), 0.f,
         juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
+    // Iron lowpass on/off
+    params.push_back (std::make_unique<juce::AudioParameterBool> (
+        IRON_LP_ID, "Iron LP",
+        true)); // on by default
+
     return { params.begin(), params.end() };
 }
 
@@ -38,6 +44,7 @@ XjTFProcessor::XjTFProcessor()
 
 
     apvts.addParameterListener (DRIVE_ID, this);
+    apvts.addParameterListener (IRON_LP_ID, this);
 }
 
 XjTFProcessor::~XjTFProcessor()
@@ -48,7 +55,7 @@ XjTFProcessor::~XjTFProcessor()
 //==============================================================================
 void XjTFProcessor::parameterChanged (const juce::String& paramID, float)
 {
-    if ( paramID == DRIVE_ID )
+    if ( paramID == DRIVE_ID || paramID == IRON_LP_ID)
         needPrepare = true;
 }
 
@@ -56,7 +63,7 @@ void XjTFProcessor::parameterChanged (const juce::String& paramID, float)
 void XjTFProcessor::prepareDSP ()
 {
     // unity (drive=1.0) at param=30
-    float drive = driveParam->load();
+    const float drive = apvts.getParameter(DRIVE_ID)->getValue();
 
     float driveInternal;
     if (drive < 60.0f)
@@ -70,18 +77,16 @@ void XjTFProcessor::prepareDSP ()
         driveInternal = std::pow(maxDrive, t);           // 1.0 → 4.22
     }
 
+    bool ironLP = dynamic_cast<juce::AudioParameterBool*>(apvts.getParameter(IRON_LP_ID))->get();
+    transformer.setIronLPEnabled(ironLP);
+
     transformer.setDrive(driveInternal);
 }
 
 //==============================================================================
 void XjTFProcessor::prepareToPlay (double sampleRate, int /* samplesPerBlock */)
 {
-    // Grab parameter pointers
-    driveParam     = apvts.getRawParameterValue (DRIVE_ID);
-    outputParam    = apvts.getRawParameterValue (OUTPUT_ID);
-
 	transformer.prepare(sampleRate, static_cast<size_t>(getTotalNumOutputChannels()));
-
     prepareDSP ();
 }
 
@@ -97,7 +102,7 @@ void XjTFProcessor::processImpl (juce::AudioBuffer<Sample>& buffer)
 {
     juce::ScopedNoDenormals noDenormals;
 
-    const float outputDb  = outputParam->load();
+    const float outputDb  = apvts.getParameter(OUTPUT_ID)->getValue();
     const double outputGain = juce::Decibels::decibelsToGain (outputDb);
 
     if (needPrepare.exchange (false))

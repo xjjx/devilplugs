@@ -44,6 +44,14 @@ public:
         ironFilter.setCutoffFrequency(hz);
     }
 
+    void setIronLPEnabled(bool enabled)
+    {
+        // flush state on disable to avoid click on re-enable
+        if (!enabled && ironLPEnabled)
+            ironFilter.reset();
+        ironLPEnabled = enabled;
+    }
+
     void setDrive(float d)
     {
         drive = static_cast<double>(d);
@@ -96,7 +104,8 @@ public:
         double y = phi * driveNorm;
 
         // ── Stage 3: iron smoothing lowpass ───────────────────────────────
-        y = ironFilter.processSample(ch, y);
+        if (ironLPEnabled)
+            y = ironFilter.processSample(ch, y);
 
         return y;
     }
@@ -126,6 +135,7 @@ private:
     double fluxRate          = 1.0;   // 1.0 = no integrator lag; lower = more "iron slowness"
     double eddy              = 0.005; // eddy current damping — very subtle
     double barkhausenAmount  = 0.0005;// domain noise — barely audible, just adds life
+    bool   ironLPEnabled     = true;
 
     juce::dsp::StateVariableTPTFilter<double> dcBlocker;  // stage 1
     // (stage 2 is the inline core model above)
