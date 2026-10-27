@@ -53,10 +53,6 @@ private:
 	uint64_t state[8] {};
 
 	//==============================================================================
-	// Noise scratch buffer — allocated once in prepareToPlay.
-	std::vector<double> noise;
-
-	//==============================================================================
 	static uint64_t splitmix64 (uint64_t& x) noexcept
 	{
 		x += 0x9e3779b97f4a7c15ULL;
@@ -67,13 +63,9 @@ private:
 
 	void seedRNG (uint64_t seed) noexcept
 	{
-		uint64_t s = seed;
-		for (int i = 0; i < 4; ++i)
-			state[i] = splitmix64 (s);
-
-		s = seed ^ 0xdeadbeefcafe1234ULL;
-		for (int i = 4; i < 8; ++i)
-			state[i] = splitmix64 (s);
+		// One splitmix64 stream feeds all 8 words: distinct, never all-zero in practice
+		for (auto& s : state)
+			s = splitmix64 (seed);
 	}
 
 	static inline uint64_t rotl64 (uint64_t x, int k) noexcept
