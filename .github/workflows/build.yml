@@ -87,7 +87,7 @@ jobs:
 
     - name: Build
       run: |
-        cmake -B build -S . -G "Visual Studio 17 2022" -A x64
+        cmake -B build -S . -A x64
         cmake --build build --config Release --parallel
 
     - name: Collect Artifacts
